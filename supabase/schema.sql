@@ -205,7 +205,7 @@ create policy "Users can manage their own water logs"
   with check (auth.uid() = user_id);
 
 -- Friends can view each other's water logs
-create policy "Friends can view each others water logs"
+create policy "Friends can view each other's water logs"
   on public.water_logs for select
   using (
     exists (

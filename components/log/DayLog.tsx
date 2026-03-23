@@ -18,6 +18,7 @@ interface Props {
 }
 
 type LogEntry = FoodLog & { food: Food };
+const DEFAULT_PIECE_WEIGHT_G = 100;
 
 export default function DayLog({ date }: Props) {
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -200,11 +201,18 @@ function MealSection({ meal, logs, macros, foods, date, onDelete, onAdded, addin
   const [saving, setSaving] = useState(false);
 
   const selectedFood = foods.find((f) => f.id === foodId);
-  const parsedPieceWeightG = selectedFood?.piece_weight_g !== null && selectedFood?.piece_weight_g !== undefined
+  const parsedPieceWeightG = selectedFood?.piece_weight_g != null
     ? Number(selectedFood.piece_weight_g)
     : null;
-  const hasPieceWeight = selectedFood?.input_basis === 'per_piece' && !!parsedPieceWeightG && parsedPieceWeightG > 0;
-  const pieceWeightG = hasPieceWeight ? parsedPieceWeightG : selectedFood?.input_basis === 'per_piece' ? 100 : null;
+  const isPieceFood = selectedFood?.input_basis === 'per_piece';
+  const hasPieceWeight = isPieceFood && !!parsedPieceWeightG && parsedPieceWeightG > 0;
+  let pieceWeightG: number | null = null;
+  if (hasPieceWeight) {
+    pieceWeightG = parsedPieceWeightG;
+  } else if (isPieceFood) {
+    // Workaround for legacy foods missing piece_weight_g so users can still log by piece.
+    pieceWeightG = DEFAULT_PIECE_WEIGHT_G;
+  }
   const canLogByPieces = pieceWeightG !== null;
   const parsedAmount = parseFloat(amountInput);
   const amountInGrams =
