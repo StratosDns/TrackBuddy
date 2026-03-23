@@ -28,6 +28,10 @@ export interface Food {
   carbs_per_100g: number;
   fats_per_100g: number;
   is_public: boolean;
+  created_from_ingredients: boolean;
+  ingredient_rows: { food_id: string; amount_g: number }[] | null;
+  input_basis: 'per_100g' | 'per_100ml' | 'per_piece';
+  piece_weight_g: number | null;
   created_at: string;
 }
 

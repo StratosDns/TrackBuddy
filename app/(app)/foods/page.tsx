@@ -24,6 +24,8 @@ type FormData = z.infer<typeof schema>;
 
 type ActiveTab = 'my-foods' | 'public-foods';
 type InputBasis = 'per_100g' | 'per_100ml' | 'per_piece';
+type IngredientRow = { foodId: string; amountG: string };
+type PersistedIngredientRow = { food_id: string; amount_g: number };
 
 const BASIS_LABELS: Record<InputBasis, string> = {
   per_100g: '100g',
@@ -127,7 +129,7 @@ export default function FoodsPage() {
   const [inputBasis, setInputBasis] = useState<InputBasis>('per_100g');
   const [pieceWeightG, setPieceWeightG] = useState('');
   const [useIngredientBuilder, setUseIngredientBuilder] = useState(false);
-  const [ingredientRows, setIngredientRows] = useState([{ foodId: '', amountG: '' }]);
+  const [ingredientRows, setIngredientRows] = useState<IngredientRow[]>([{ foodId: '', amountG: '' }]);
 
   const {
     register,
@@ -178,23 +180,11 @@ export default function FoodsPage() {
       fats: roundToOneDecimalPlace(totals.fats * per100Factor),
     };
 
-    const pieceWeight = parseFloat(pieceWeightG);
-    const basisFactor =
-      inputBasis === 'per_piece' && pieceWeight > 0
-        ? pieceWeight / 100
-        : 1;
-
     return {
       per100,
-      display: {
-        calories: roundToOneDecimalPlace(per100.calories * basisFactor),
-        protein: roundToOneDecimalPlace(per100.protein * basisFactor),
-        carbs: roundToOneDecimalPlace(per100.carbs * basisFactor),
-        fats: roundToOneDecimalPlace(per100.fats * basisFactor),
-      },
       totalWeightG: roundToOneDecimalPlace(totals.weightG),
     };
-  }, [foods, ingredientRows, inputBasis, pieceWeightG]);
+  }, [foods, ingredientRows]);
 
   async function loadFoods() {
     const supabase = createClient();
@@ -243,6 +233,7 @@ export default function FoodsPage() {
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
+    const parsedPieceWeight = parseFloat(pieceWeightG);
     let calories = data.calories_per_100g;
     let protein = data.protein_per_100g;
     let carbs = data.carbs_per_100g;
@@ -258,17 +249,32 @@ export default function FoodsPage() {
       carbs = ingredientRecipe.per100.carbs;
       fats = ingredientRecipe.per100.fats;
     } else if (inputBasis === 'per_piece') {
-      const pieceWeight = parseFloat(pieceWeightG);
-      if (Number.isNaN(pieceWeight) || pieceWeight <= 0) {
+      if (Number.isNaN(parsedPieceWeight) || parsedPieceWeight <= 0) {
         alert('Please enter a piece weight greater than 0 grams.');
         return;
       }
-      const normalizeFactor = 100 / pieceWeight;
+      const normalizeFactor = 100 / parsedPieceWeight;
       calories = roundToOneDecimalPlace(calories * normalizeFactor);
       protein = roundToOneDecimalPlace(protein * normalizeFactor);
       carbs = roundToOneDecimalPlace(carbs * normalizeFactor);
       fats = roundToOneDecimalPlace(fats * normalizeFactor);
     }
+
+    const persistedIngredientRows = useIngredientBuilder
+      ? ingredientRows
+          .map((row) => {
+            const amountG = parseFloat(row.amountG);
+            if (!row.foodId || Number.isNaN(amountG) || amountG <= 0) return null;
+            return { food_id: row.foodId, amount_g: roundToOneDecimalPlace(amountG) };
+          })
+          .filter((row): row is PersistedIngredientRow => row !== null)
+      : null;
+
+    const shouldPersistPieceWeight =
+      !useIngredientBuilder &&
+      inputBasis === 'per_piece' &&
+      !Number.isNaN(parsedPieceWeight) &&
+      parsedPieceWeight > 0;
 
     const payload = {
       ...data,
@@ -277,6 +283,12 @@ export default function FoodsPage() {
       carbs_per_100g: carbs,
       fats_per_100g: fats,
       is_public: Boolean(isPublicValue),
+      created_from_ingredients: useIngredientBuilder,
+      ingredient_rows: persistedIngredientRows,
+      input_basis: inputBasis,
+      piece_weight_g: shouldPersistPieceWeight
+        ? roundToOneDecimalPlace(parsedPieceWeight)
+        : null,
     };
 
     if (editId) {
@@ -313,10 +325,15 @@ export default function FoodsPage() {
       is_public: food.is_public,
     });
     setShowForm(true);
-    setInputBasis('per_100g');
-    setPieceWeightG('');
-    setUseIngredientBuilder(false);
-    setIngredientRows([{ foodId: '', amountG: '' }]);
+    const isIngredientBased = Boolean(food.created_from_ingredients);
+    setUseIngredientBuilder(isIngredientBased);
+    setInputBasis(food.input_basis);
+    setPieceWeightG(food.piece_weight_g ? String(food.piece_weight_g) : '');
+    const restoredRows = (food.ingredient_rows ?? []).map((row) => ({
+      foodId: row.food_id,
+      amountG: String(row.amount_g),
+    }));
+    setIngredientRows(restoredRows.length > 0 ? restoredRows : [{ foodId: '', amountG: '' }]);
   }
 
   function cancelForm() {
@@ -418,7 +435,7 @@ export default function FoodsPage() {
                     ))}
                   </div>
                 </div>
-                {inputBasis === 'per_piece' && (
+                {!useIngredientBuilder && inputBasis === 'per_piece' && (
                   <Input
                     label="Weight of 1 piece (g)"
                     type="number"
@@ -505,9 +522,9 @@ export default function FoodsPage() {
                     </div>
                     {ingredientRecipe && (
                       <p className="text-xs text-gray-600 bg-white border border-gray-200 rounded-lg px-3 py-2">
-                        Generated macros per {selectedBasisLabel}: {ingredientRecipe.display.calories} kcal,{' '}
-                        {ingredientRecipe.display.protein}g protein, {ingredientRecipe.display.carbs}g carbs,{' '}
-                        {ingredientRecipe.display.fats}g fats
+                        Generated macros per {BASIS_LABELS.per_100g}: {ingredientRecipe.per100.calories} kcal,{' '}
+                        {ingredientRecipe.per100.protein}g protein, {ingredientRecipe.per100.carbs}g carbs,{' '}
+                        {ingredientRecipe.per100.fats}g fats
                       </p>
                     )}
                   </div>
