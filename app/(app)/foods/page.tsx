@@ -175,16 +175,29 @@ export default function FoodsPage() {
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
+    const payload = { ...data, is_public: Boolean(isPublicValue) };
 
     if (editId) {
-      await supabase.from('foods').update(data).eq('id', editId);
+      const { error } = await supabase
+        .from('foods')
+        .update(payload)
+        .eq('id', editId)
+        .eq('user_id', user.id);
+      if (error) {
+        alert(error.message);
+        return;
+      }
       setEditId(null);
     } else {
-      await supabase.from('foods').insert({ ...data, user_id: user.id });
+      const { error } = await supabase.from('foods').insert({ ...payload, user_id: user.id });
+      if (error) {
+        alert(error.message);
+        return;
+      }
     }
-    reset({ is_public: false });
+    reset({ is_public: payload.is_public });
     setShowForm(false);
-    loadFoods();
+    await loadFoods();
   }
 
   function startEdit(food: Food) {
