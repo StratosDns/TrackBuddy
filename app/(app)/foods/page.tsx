@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useForm, Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -23,6 +23,17 @@ const schema = z.object({
 type FormData = z.infer<typeof schema>;
 
 type ActiveTab = 'my-foods' | 'public-foods';
+type InputBasis = 'per_100g' | 'per_100ml' | 'per_piece';
+
+const BASIS_LABELS: Record<InputBasis, string> = {
+  per_100g: '100g',
+  per_100ml: '100ml',
+  per_piece: '1 piece',
+};
+
+function roundToSingleDecimal(value: number): number {
+  return Math.round(value * 10) / 10;
+}
 
 function FoodCard({
   food,
@@ -113,6 +124,10 @@ export default function FoodsPage() {
   const [publicFoods, setPublicFoods] = useState<Food[]>([]);
   const [publicSearch, setPublicSearch] = useState('');
   const [publicLoading, setPublicLoading] = useState(false);
+  const [inputBasis, setInputBasis] = useState<InputBasis>('per_100g');
+  const [pieceWeightG, setPieceWeightG] = useState('');
+  const [useIngredientBuilder, setUseIngredientBuilder] = useState(false);
+  const [ingredientRows, setIngredientRows] = useState([{ foodId: '', amountG: '' }]);
 
   const {
     register,
@@ -127,6 +142,59 @@ export default function FoodsPage() {
   });
 
   const isPublicValue = watch('is_public');
+
+  const selectedBasisLabel = BASIS_LABELS[inputBasis];
+
+  const ingredientRecipe = useMemo(() => {
+    const selectedRows = ingredientRows
+      .map((row) => {
+        const ingredient = foods.find((food) => food.id === row.foodId);
+        const amountG = parseFloat(row.amountG);
+        if (!ingredient || Number.isNaN(amountG) || amountG <= 0) return null;
+        return { ingredient, amountG };
+      })
+      .filter((row): row is { ingredient: Food; amountG: number } => row !== null);
+
+    const totals = selectedRows.reduce(
+      (acc, row) => {
+        const factor = row.amountG / 100;
+        acc.weightG += row.amountG;
+        acc.calories += row.ingredient.calories_per_100g * factor;
+        acc.protein += row.ingredient.protein_per_100g * factor;
+        acc.carbs += row.ingredient.carbs_per_100g * factor;
+        acc.fats += row.ingredient.fats_per_100g * factor;
+        return acc;
+      },
+      { weightG: 0, calories: 0, protein: 0, carbs: 0, fats: 0 }
+    );
+
+    if (totals.weightG <= 0) return null;
+
+    const per100Factor = 100 / totals.weightG;
+    const per100 = {
+      calories: roundToSingleDecimal(totals.calories * per100Factor),
+      protein: roundToSingleDecimal(totals.protein * per100Factor),
+      carbs: roundToSingleDecimal(totals.carbs * per100Factor),
+      fats: roundToSingleDecimal(totals.fats * per100Factor),
+    };
+
+    const pieceWeight = parseFloat(pieceWeightG);
+    const basisFactor =
+      inputBasis === 'per_piece' && pieceWeight > 0
+        ? pieceWeight / 100
+        : 1;
+
+    return {
+      per100,
+      display: {
+        calories: roundToSingleDecimal(per100.calories * basisFactor),
+        protein: roundToSingleDecimal(per100.protein * basisFactor),
+        carbs: roundToSingleDecimal(per100.carbs * basisFactor),
+        fats: roundToSingleDecimal(per100.fats * basisFactor),
+      },
+      totalWeightG: roundToSingleDecimal(totals.weightG),
+    };
+  }, [foods, ingredientRows, inputBasis, pieceWeightG]);
 
   async function loadFoods() {
     const supabase = createClient();
@@ -175,7 +243,43 @@ export default function FoodsPage() {
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
-    const payload = { ...data, is_public: Boolean(isPublicValue) };
+    let calories = data.calories_per_100g;
+    let protein = data.protein_per_100g;
+    let carbs = data.carbs_per_100g;
+    let fats = data.fats_per_100g;
+
+    if (useIngredientBuilder) {
+      if (!ingredientRecipe) {
+        alert('Please add at least one ingredient with a valid amount.');
+        return;
+      }
+      calories = ingredientRecipe.display.calories;
+      protein = ingredientRecipe.display.protein;
+      carbs = ingredientRecipe.display.carbs;
+      fats = ingredientRecipe.display.fats;
+    }
+
+    if (inputBasis === 'per_piece') {
+      const pieceWeight = parseFloat(pieceWeightG);
+      if (Number.isNaN(pieceWeight) || pieceWeight <= 0) {
+        alert('Please enter a valid piece weight in grams.');
+        return;
+      }
+      const normalizeFactor = 100 / pieceWeight;
+      calories = roundToSingleDecimal(calories * normalizeFactor);
+      protein = roundToSingleDecimal(protein * normalizeFactor);
+      carbs = roundToSingleDecimal(carbs * normalizeFactor);
+      fats = roundToSingleDecimal(fats * normalizeFactor);
+    }
+
+    const payload = {
+      ...data,
+      calories_per_100g: calories,
+      protein_per_100g: protein,
+      carbs_per_100g: carbs,
+      fats_per_100g: fats,
+      is_public: Boolean(isPublicValue),
+    };
 
     if (editId) {
       const { error } = await supabase
@@ -211,12 +315,20 @@ export default function FoodsPage() {
       is_public: food.is_public,
     });
     setShowForm(true);
+    setInputBasis('per_100g');
+    setPieceWeightG('');
+    setUseIngredientBuilder(false);
+    setIngredientRows([{ foodId: '', amountG: '' }]);
   }
 
   function cancelForm() {
     setShowForm(false);
     setEditId(null);
     reset({ is_public: false });
+    setInputBasis('per_100g');
+    setPieceWeightG('');
+    setUseIngredientBuilder(false);
+    setIngredientRows([{ foodId: '', amountG: '' }]);
   }
 
   async function deleteFood(id: string) {
@@ -233,7 +345,17 @@ export default function FoodsPage() {
           <p className="text-sm text-gray-500 mt-1">Manage your foods and explore public foods</p>
         </div>
         {activeTab === 'my-foods' && !showForm && (
-          <Button onClick={() => { setShowForm(true); setEditId(null); reset({ is_public: false }); }}>
+          <Button
+            onClick={() => {
+              setShowForm(true);
+              setEditId(null);
+              reset({ is_public: false });
+              setInputBasis('per_100g');
+              setPieceWeightG('');
+              setUseIngredientBuilder(false);
+              setIngredientRows([{ foodId: '', amountG: '' }]);
+            }}
+          >
             <Plus className="w-4 h-4" />
             Add Food
           </Button>
@@ -279,41 +401,160 @@ export default function FoodsPage() {
                     {...register('name')}
                   />
                 </div>
+                <div className="sm:col-span-2 lg:col-span-3">
+                  <p className="text-sm font-medium text-gray-700 mb-2">Macros are entered per:</p>
+                  <div className="flex flex-wrap gap-2">
+                    {(['per_100g', 'per_100ml', 'per_piece'] as InputBasis[]).map((basis) => (
+                      <button
+                        key={basis}
+                        type="button"
+                        onClick={() => setInputBasis(basis)}
+                        className={`px-3 py-1.5 rounded-lg border text-sm transition-colors ${
+                          inputBasis === basis
+                            ? 'bg-green-50 border-green-300 text-green-700'
+                            : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
+                        }`}
+                      >
+                        {BASIS_LABELS[basis]}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {inputBasis === 'per_piece' && (
+                  <Input
+                    label="Weight of 1 piece (g)"
+                    type="number"
+                    step="0.1"
+                    min="0.1"
+                    placeholder="e.g. 250"
+                    value={pieceWeightG}
+                    onChange={(e) => setPieceWeightG(e.target.value)}
+                  />
+                )}
+                <div className="sm:col-span-2 lg:col-span-3">
+                  <button
+                    type="button"
+                    onClick={() => setUseIngredientBuilder((prev) => !prev)}
+                    className="text-sm font-medium text-green-700 hover:text-green-800"
+                  >
+                    {useIngredientBuilder ? 'Use manual macros instead' : 'Build this meal from existing ingredients'}
+                  </button>
+                </div>
+                {useIngredientBuilder && (
+                  <div className="sm:col-span-2 lg:col-span-3 bg-gray-50 border border-gray-200 rounded-lg p-3 flex flex-col gap-3">
+                    {ingredientRows.map((row, index) => (
+                      <div key={index} className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-end">
+                        <div className="sm:col-span-7">
+                          <label className="text-xs text-gray-600 mb-1 block">Ingredient</label>
+                          <select
+                            value={row.foodId}
+                            onChange={(e) =>
+                              setIngredientRows((prev) =>
+                                prev.map((r, i) => (i === index ? { ...r, foodId: e.target.value } : r))
+                              )
+                            }
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none focus:border-green-500 focus:ring-2 focus:ring-green-200"
+                          >
+                            <option value="">-- Choose a food --</option>
+                            {foods
+                              .filter((food) => food.id !== editId)
+                              .map((food) => (
+                                <option key={food.id} value={food.id}>
+                                  {food.name}
+                                </option>
+                              ))}
+                          </select>
+                        </div>
+                        <div className="sm:col-span-3">
+                          <label className="text-xs text-gray-600 mb-1 block">Amount (g)</label>
+                          <input
+                            type="number"
+                            step="0.1"
+                            min="0.1"
+                            value={row.amountG}
+                            onChange={(e) =>
+                              setIngredientRows((prev) =>
+                                prev.map((r, i) => (i === index ? { ...r, amountG: e.target.value } : r))
+                              )
+                            }
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none focus:border-green-500 focus:ring-2 focus:ring-green-200"
+                            placeholder="e.g. 120"
+                          />
+                        </div>
+                        <div className="sm:col-span-2">
+                          <button
+                            type="button"
+                            disabled={ingredientRows.length <= 1}
+                            onClick={() => setIngredientRows((prev) => prev.filter((_, i) => i !== index))}
+                            className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-600 disabled:opacity-50"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => setIngredientRows((prev) => [...prev, { foodId: '', amountG: '' }])}
+                        className="text-sm text-green-700 hover:text-green-800 font-medium"
+                      >
+                        + Add ingredient
+                      </button>
+                      {ingredientRecipe && (
+                        <p className="text-xs text-gray-500">
+                          Total recipe weight: {ingredientRecipe.totalWeightG}g
+                        </p>
+                      )}
+                    </div>
+                    {ingredientRecipe && (
+                      <p className="text-xs text-gray-600 bg-white border border-gray-200 rounded-lg px-3 py-2">
+                        Generated macros per {selectedBasisLabel}: {ingredientRecipe.display.calories} kcal,{' '}
+                        {ingredientRecipe.display.protein}g protein, {ingredientRecipe.display.carbs}g carbs,{' '}
+                        {ingredientRecipe.display.fats}g fats
+                      </p>
+                    )}
+                  </div>
+                )}
                 <Input
-                  label="Calories (per 100g)"
+                  label={`Calories (per ${selectedBasisLabel})`}
                   type="number"
                   step="0.1"
                   min="0"
                   placeholder="e.g. 165"
                   error={errors.calories_per_100g?.message}
                   {...register('calories_per_100g')}
+                  disabled={useIngredientBuilder}
                 />
                 <Input
-                  label="Protein (g per 100g)"
+                  label={`Protein (g per ${selectedBasisLabel})`}
                   type="number"
                   step="0.1"
                   min="0"
                   placeholder="e.g. 31"
                   error={errors.protein_per_100g?.message}
                   {...register('protein_per_100g')}
+                  disabled={useIngredientBuilder}
                 />
                 <Input
-                  label="Carbs (g per 100g)"
+                  label={`Carbs (g per ${selectedBasisLabel})`}
                   type="number"
                   step="0.1"
                   min="0"
                   placeholder="e.g. 0"
                   error={errors.carbs_per_100g?.message}
                   {...register('carbs_per_100g')}
+                  disabled={useIngredientBuilder}
                 />
                 <Input
-                  label="Fats (g per 100g)"
+                  label={`Fats (g per ${selectedBasisLabel})`}
                   type="number"
                   step="0.1"
                   min="0"
                   placeholder="e.g. 3.6"
                   error={errors.fats_per_100g?.message}
                   {...register('fats_per_100g')}
+                  disabled={useIngredientBuilder}
                 />
                 <div className="sm:col-span-2 lg:col-span-3 flex items-center gap-3">
                   <button
