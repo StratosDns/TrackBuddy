@@ -157,16 +157,29 @@ interface MealSectionProps {
 
 function MealSection({ meal, logs, macros, foods, date, onDelete, onAdded, adding, onToggleAdd }: MealSectionProps) {
   const [foodId, setFoodId] = useState('');
-  const [amountG, setAmountG] = useState('');
+  const [amountInput, setAmountInput] = useState('');
+  const [amountUnit, setAmountUnit] = useState<'grams' | 'pieces'>('grams');
   const [saving, setSaving] = useState(false);
 
   const selectedFood = foods.find((f) => f.id === foodId);
-  const preview = selectedFood && amountG ? calcMacros(selectedFood, parseFloat(amountG) || 0) : null;
+  const pieceWeightG =
+    selectedFood?.input_basis === 'per_piece' &&
+    selectedFood.piece_weight_g &&
+    selectedFood.piece_weight_g > 0
+      ? selectedFood.piece_weight_g
+      : null;
+  const canLogByPieces = pieceWeightG !== null;
+  const parsedAmount = parseFloat(amountInput);
+  const amountInGrams =
+    Number.isNaN(parsedAmount) || parsedAmount <= 0
+      ? null
+      : canLogByPieces && amountUnit === 'pieces'
+        ? parsedAmount * pieceWeightG!
+        : parsedAmount;
+  const preview = selectedFood && amountInGrams ? calcMacros(selectedFood, amountInGrams) : null;
 
   async function addEntry() {
-    if (!foodId || !amountG) return;
-    const amount = parseFloat(amountG);
-    if (isNaN(amount) || amount <= 0) return;
+    if (!foodId || !amountInput || !amountInGrams) return;
 
     setSaving(true);
     const supabase = createClient();
@@ -178,11 +191,12 @@ function MealSection({ meal, logs, macros, foods, date, onDelete, onAdded, addin
       date,
       meal_type: meal,
       food_id: foodId,
-      amount_g: amount,
+      amount_g: amountInGrams,
     });
 
     setFoodId('');
-    setAmountG('');
+    setAmountInput('');
+    setAmountUnit('grams');
     setSaving(false);
     onAdded();
     onToggleAdd();
@@ -210,7 +224,13 @@ function MealSection({ meal, logs, macros, foods, date, onDelete, onAdded, addin
             <label className="text-sm font-medium text-gray-700">Select food</label>
             <select
               value={foodId}
-              onChange={(e) => setFoodId(e.target.value)}
+              onChange={(e) => {
+                const nextFoodId = e.target.value;
+                const nextFood = foods.find((f) => f.id === nextFoodId);
+                setFoodId(nextFoodId);
+                setAmountInput('');
+                setAmountUnit(nextFood?.input_basis === 'per_piece' ? 'pieces' : 'grams');
+              }}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none focus:border-green-500 focus:ring-2 focus:ring-green-200"
             >
               <option value="">-- Choose a food --</option>
@@ -221,15 +241,49 @@ function MealSection({ meal, logs, macros, foods, date, onDelete, onAdded, addin
               ))}
             </select>
           </div>
+          {canLogByPieces && (
+            <div className="flex flex-col gap-1">
+              <span className="text-sm font-medium text-gray-700">Enter amount as</span>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setAmountUnit('pieces')}
+                  className={`px-3 py-1.5 rounded-lg border text-sm transition-colors ${
+                    amountUnit === 'pieces'
+                      ? 'bg-green-50 border-green-300 text-green-700'
+                      : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
+                  }`}
+                >
+                  Pieces
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAmountUnit('grams')}
+                  className={`px-3 py-1.5 rounded-lg border text-sm transition-colors ${
+                    amountUnit === 'grams'
+                      ? 'bg-green-50 border-green-300 text-green-700'
+                      : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
+                  }`}
+                >
+                  Grams
+                </button>
+              </div>
+            </div>
+          )}
           <Input
-            label="Amount (g)"
+            label={canLogByPieces && amountUnit === 'pieces' ? 'Amount (pieces)' : 'Amount (g)'}
             type="number"
-            min="1"
-            step="1"
-            placeholder="e.g. 150"
-            value={amountG}
-            onChange={(e) => setAmountG(e.target.value)}
+            min={canLogByPieces && amountUnit === 'pieces' ? '0.1' : '1'}
+            step={canLogByPieces && amountUnit === 'pieces' ? '0.1' : '1'}
+            placeholder={canLogByPieces && amountUnit === 'pieces' ? 'e.g. 1.5' : 'e.g. 150'}
+            value={amountInput}
+            onChange={(e) => setAmountInput(e.target.value)}
           />
+          {canLogByPieces && amountUnit === 'pieces' && amountInGrams && (
+            <p className="text-xs text-gray-500">
+              This equals {Math.round(amountInGrams * 10) / 10}g ({pieceWeightG!}g per piece).
+            </p>
+          )}
           {preview && (
             <div className="text-xs text-gray-500 bg-white border border-gray-200 rounded-lg px-3 py-2">
               <MacroBadge {...preview} compact />
@@ -244,7 +298,7 @@ function MealSection({ meal, logs, macros, foods, date, onDelete, onAdded, addin
             size="sm"
             onClick={addEntry}
             loading={saving}
-            disabled={!foodId || !amountG}
+            disabled={!foodId || !amountInput}
           >
             Add to {MEAL_LABELS[meal]}
           </Button>
