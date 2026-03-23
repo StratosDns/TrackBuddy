@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
-import { Calendar, BookOpen, User, Apple, LogOut, Menu, X } from 'lucide-react';
+import { Calendar, BookOpen, User, Apple, LogOut, Menu, X, Users } from 'lucide-react';
 import { useState } from 'react';
 import { format } from 'date-fns';
 
@@ -12,6 +12,7 @@ const navItems = [
   { href: '/dashboard', label: 'Calendar', icon: Calendar },
   { href: `/log/${format(new Date(), 'yyyy-MM-dd')}`, label: 'Today', icon: BookOpen },
   { href: '/foods', label: 'My Foods', icon: Apple },
+  { href: '/friends', label: 'Friends', icon: Users },
   { href: '/profile', label: 'Profile', icon: User },
 ];
 
