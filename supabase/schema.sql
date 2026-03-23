@@ -176,6 +176,35 @@ create table if not exists public.friendships (
   unique(requester_id, addressee_id)
 );
 
+-- Extra FK links to profiles for reliable profile joins in Supabase queries
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'friendships_requester_profile_fkey'
+      and conrelid = 'public.friendships'::regclass
+  ) then
+    alter table public.friendships
+      add constraint friendships_requester_profile_fkey
+      foreign key (requester_id) references public.profiles(id) on delete cascade;
+  end if;
+end $$;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'friendships_addressee_profile_fkey'
+      and conrelid = 'public.friendships'::regclass
+  ) then
+    alter table public.friendships
+      add constraint friendships_addressee_profile_fkey
+      foreign key (addressee_id) references public.profiles(id) on delete cascade;
+  end if;
+end $$;
+
 -- Row Level Security for friendships
 alter table public.friendships enable row level security;
 
