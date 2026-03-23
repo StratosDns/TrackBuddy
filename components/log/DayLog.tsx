@@ -4,26 +4,29 @@ import { useState, useEffect, useCallback } from 'react';
 import { format, parseISO } from 'date-fns';
 import { createClient } from '@/lib/supabase/client';
 import {
-  Food, FoodLog, WeightLog, MealType,
+  Food, FoodLog, WeightLog, WaterLog, MealType,
   calcMacros, sumMacros, ZERO_MACROS, MEAL_LABELS, MEAL_ORDER, DayMacros
 } from '@/lib/types';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import MacroBadge from '@/components/ui/MacroBadge';
 import Input from '@/components/ui/Input';
-import { Plus, Trash2, Scale } from 'lucide-react';
+import { Plus, Trash2, Scale, Droplets } from 'lucide-react';
 
 interface Props {
   date: string;
 }
 
 type LogEntry = FoodLog & { food: Food };
+const DEFAULT_PIECE_WEIGHT_G = 100;
 
 export default function DayLog({ date }: Props) {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [foods, setFoods] = useState<Food[]>([]);
   const [weight, setWeight] = useState<WeightLog | null>(null);
   const [weightInput, setWeightInput] = useState('');
+  const [water, setWater] = useState<WaterLog | null>(null);
+  const [waterInput, setWaterInput] = useState('');
   const [addingMeal, setAddingMeal] = useState<MealType | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -32,16 +35,19 @@ export default function DayLog({ date }: Props) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    const [logsRes, foodsRes, weightRes] = await Promise.all([
+    const [logsRes, foodsRes, weightRes, waterRes] = await Promise.all([
       supabase.from('food_logs').select('*, food:foods(*)').eq('user_id', user.id).eq('date', date),
       supabase.from('foods').select('*').eq('user_id', user.id).order('name'),
       supabase.from('weight_logs').select('*').eq('user_id', user.id).eq('date', date).maybeSingle(),
+      supabase.from('water_logs').select('*').eq('user_id', user.id).eq('date', date).maybeSingle(),
     ]);
 
     setLogs((logsRes.data as LogEntry[]) || []);
     setFoods(foodsRes.data || []);
     setWeight(weightRes.data || null);
     setWeightInput(weightRes.data?.weight_kg?.toString() || '');
+    setWater(waterRes.data || null);
+    setWaterInput(waterRes.data?.water_ml?.toString() || '');
     setLoading(false);
   }, [date]);
 
@@ -58,6 +64,21 @@ export default function DayLog({ date }: Props) {
       await supabase.from('weight_logs').update({ weight_kg: val }).eq('id', weight.id);
     } else {
       await supabase.from('weight_logs').insert({ user_id: user.id, date, weight_kg: val });
+    }
+    loadData();
+  }
+
+  async function saveWater() {
+    const val = parseFloat(waterInput);
+    if (isNaN(val) || val <= 0) return;
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    if (water) {
+      await supabase.from('water_logs').update({ water_ml: val }).eq('id', water.id);
+    } else {
+      await supabase.from('water_logs').insert({ user_id: user.id, date, water_ml: val });
     }
     loadData();
   }
@@ -99,21 +120,39 @@ export default function DayLog({ date }: Props) {
           </h1>
           <p className="text-sm text-gray-500">{format(parseISO(date), 'yyyy')}</p>
         </div>
-        {/* Weight logger */}
-        <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-4 py-2">
-          <Scale className="w-4 h-4 text-blue-500 shrink-0" />
-          <input
-            type="number"
-            step="0.1"
-            min="1"
-            placeholder="Weight (kg)"
-            value={weightInput}
-            onChange={(e) => setWeightInput(e.target.value)}
-            className="w-28 text-sm outline-none text-gray-700 placeholder-gray-400"
-          />
-          <Button size="sm" variant="secondary" onClick={saveWeight}>
-            Save
-          </Button>
+        <div className="flex items-center gap-3 flex-wrap">
+          {/* Weight logger */}
+          <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-4 py-2">
+            <Scale className="w-4 h-4 text-blue-500 shrink-0" />
+            <input
+              type="number"
+              step="0.1"
+              min="1"
+              placeholder="Weight (kg)"
+              value={weightInput}
+              onChange={(e) => setWeightInput(e.target.value)}
+              className="w-28 text-sm outline-none text-gray-700 placeholder-gray-400"
+            />
+            <Button size="sm" variant="secondary" onClick={saveWeight}>
+              Save
+            </Button>
+          </div>
+          {/* Water logger */}
+          <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-4 py-2">
+            <Droplets className="w-4 h-4 text-cyan-500 shrink-0" />
+            <input
+              type="number"
+              step="50"
+              min="50"
+              placeholder="Water (ml)"
+              value={waterInput}
+              onChange={(e) => setWaterInput(e.target.value)}
+              className="w-28 text-sm outline-none text-gray-700 placeholder-gray-400"
+            />
+            <Button size="sm" variant="secondary" onClick={saveWater}>
+              Save
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -162,12 +201,18 @@ function MealSection({ meal, logs, macros, foods, date, onDelete, onAdded, addin
   const [saving, setSaving] = useState(false);
 
   const selectedFood = foods.find((f) => f.id === foodId);
-  const pieceWeightG =
-    selectedFood?.input_basis === 'per_piece' &&
-    selectedFood.piece_weight_g &&
-    selectedFood.piece_weight_g > 0
-      ? selectedFood.piece_weight_g
-      : null;
+  const parsedPieceWeightG = selectedFood?.piece_weight_g != null
+    ? Number(selectedFood.piece_weight_g)
+    : null;
+  const isPieceFood = selectedFood?.input_basis === 'per_piece';
+  const hasPieceWeight = isPieceFood && !!parsedPieceWeightG && parsedPieceWeightG > 0;
+  let pieceWeightG: number | null = null;
+  if (hasPieceWeight) {
+    pieceWeightG = parsedPieceWeightG;
+  } else if (isPieceFood) {
+    // Workaround for legacy foods missing piece_weight_g so users can still log by piece.
+    pieceWeightG = DEFAULT_PIECE_WEIGHT_G;
+  }
   const canLogByPieces = pieceWeightG !== null;
   const parsedAmount = parseFloat(amountInput);
   const amountInGrams =
@@ -282,6 +327,12 @@ function MealSection({ meal, logs, macros, foods, date, onDelete, onAdded, addin
           {canLogByPieces && amountUnit === 'pieces' && amountInGrams && (
             <p className="text-xs text-gray-500">
               This equals {Math.round(amountInGrams * 10) / 10}g ({pieceWeightG!}g per piece).
+            </p>
+          )}
+          {selectedFood?.input_basis === 'per_piece' && !hasPieceWeight && (
+            <p className="text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2 border border-amber-100">
+              This food is missing piece-weight metadata. Workaround mode is active (1 piece = 100g).
+              Edit this food in <strong>My Foods</strong> and set piece weight for more precise logging.
             </p>
           )}
           {preview && (

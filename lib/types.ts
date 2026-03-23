@@ -54,6 +54,14 @@ export interface WeightLog {
   created_at: string;
 }
 
+export interface WaterLog {
+  id: string;
+  user_id: string;
+  date: string; // YYYY-MM-DD
+  water_ml: number;
+  created_at: string;
+}
+
 export interface DayMacros {
   calories: number;
   protein: number;
