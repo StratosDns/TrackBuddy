@@ -31,7 +31,7 @@ const BASIS_LABELS: Record<InputBasis, string> = {
   per_piece: '1 piece',
 };
 
-function roundToSingleDecimal(value: number): number {
+function roundToOneDecimalPlace(value: number): number {
   return Math.round(value * 10) / 10;
 }
 
@@ -172,10 +172,10 @@ export default function FoodsPage() {
 
     const per100Factor = 100 / totals.weightG;
     const per100 = {
-      calories: roundToSingleDecimal(totals.calories * per100Factor),
-      protein: roundToSingleDecimal(totals.protein * per100Factor),
-      carbs: roundToSingleDecimal(totals.carbs * per100Factor),
-      fats: roundToSingleDecimal(totals.fats * per100Factor),
+      calories: roundToOneDecimalPlace(totals.calories * per100Factor),
+      protein: roundToOneDecimalPlace(totals.protein * per100Factor),
+      carbs: roundToOneDecimalPlace(totals.carbs * per100Factor),
+      fats: roundToOneDecimalPlace(totals.fats * per100Factor),
     };
 
     const pieceWeight = parseFloat(pieceWeightG);
@@ -187,12 +187,12 @@ export default function FoodsPage() {
     return {
       per100,
       display: {
-        calories: roundToSingleDecimal(per100.calories * basisFactor),
-        protein: roundToSingleDecimal(per100.protein * basisFactor),
-        carbs: roundToSingleDecimal(per100.carbs * basisFactor),
-        fats: roundToSingleDecimal(per100.fats * basisFactor),
+        calories: roundToOneDecimalPlace(per100.calories * basisFactor),
+        protein: roundToOneDecimalPlace(per100.protein * basisFactor),
+        carbs: roundToOneDecimalPlace(per100.carbs * basisFactor),
+        fats: roundToOneDecimalPlace(per100.fats * basisFactor),
       },
-      totalWeightG: roundToSingleDecimal(totals.weightG),
+      totalWeightG: roundToOneDecimalPlace(totals.weightG),
     };
   }, [foods, ingredientRows, inputBasis, pieceWeightG]);
 
@@ -250,26 +250,24 @@ export default function FoodsPage() {
 
     if (useIngredientBuilder) {
       if (!ingredientRecipe) {
-        alert('Please add at least one ingredient with a valid amount.');
+        alert('Please select at least one ingredient and enter a valid amount greater than 0g.');
         return;
       }
-      calories = ingredientRecipe.display.calories;
-      protein = ingredientRecipe.display.protein;
-      carbs = ingredientRecipe.display.carbs;
-      fats = ingredientRecipe.display.fats;
-    }
-
-    if (inputBasis === 'per_piece') {
+      calories = ingredientRecipe.per100.calories;
+      protein = ingredientRecipe.per100.protein;
+      carbs = ingredientRecipe.per100.carbs;
+      fats = ingredientRecipe.per100.fats;
+    } else if (inputBasis === 'per_piece') {
       const pieceWeight = parseFloat(pieceWeightG);
       if (Number.isNaN(pieceWeight) || pieceWeight <= 0) {
-        alert('Please enter a valid piece weight in grams.');
+        alert('Please enter a piece weight greater than 0 grams.');
         return;
       }
       const normalizeFactor = 100 / pieceWeight;
-      calories = roundToSingleDecimal(calories * normalizeFactor);
-      protein = roundToSingleDecimal(protein * normalizeFactor);
-      carbs = roundToSingleDecimal(carbs * normalizeFactor);
-      fats = roundToSingleDecimal(fats * normalizeFactor);
+      calories = roundToOneDecimalPlace(calories * normalizeFactor);
+      protein = roundToOneDecimalPlace(protein * normalizeFactor);
+      carbs = roundToOneDecimalPlace(carbs * normalizeFactor);
+      fats = roundToOneDecimalPlace(fats * normalizeFactor);
     }
 
     const payload = {
@@ -456,13 +454,11 @@ export default function FoodsPage() {
                             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none focus:border-green-500 focus:ring-2 focus:ring-green-200"
                           >
                             <option value="">-- Choose a food --</option>
-                            {foods
-                              .filter((food) => food.id !== editId)
-                              .map((food) => (
-                                <option key={food.id} value={food.id}>
-                                  {food.name}
-                                </option>
-                              ))}
+                            {foods.map((food) => (
+                              <option key={food.id} value={food.id}>
+                                {food.name}
+                              </option>
+                            ))}
                           </select>
                         </div>
                         <div className="sm:col-span-3">
