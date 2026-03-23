@@ -38,7 +38,7 @@ export default function FriendsPage() {
 
     const { data } = await supabase
       .from('friendships')
-      .select('*, requester:profiles!friendships_requester_id_fkey(*), addressee:profiles!friendships_addressee_id_fkey(*)')
+      .select('*, requester:profiles!friendships_requester_profile_fkey(*), addressee:profiles!friendships_addressee_profile_fkey(*)')
       .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`)
       .order('created_at', { ascending: false });
 
