@@ -184,6 +184,44 @@ create policy "Friends can view each others weight logs"
 create index if not exists weight_logs_user_date_idx on public.weight_logs (user_id, date);
 
 -- =========================================================
+-- WATER_LOGS TABLE
+-- =========================================================
+create table if not exists public.water_logs (
+  id uuid default gen_random_uuid() primary key,
+  user_id uuid references auth.users(id) on delete cascade not null,
+  date date not null,
+  water_ml numeric(7,2) not null,
+  created_at timestamptz default now() not null,
+  unique(user_id, date)
+);
+
+-- Row Level Security for water_logs
+alter table public.water_logs enable row level security;
+
+-- Users can fully manage their own water logs
+create policy "Users can manage their own water logs"
+  on public.water_logs for all
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+-- Friends can view each other's water logs
+create policy "Friends can view each others water logs"
+  on public.water_logs for select
+  using (
+    exists (
+      select 1 from public.friendships
+      where status = 'accepted'
+        and (
+          (requester_id = auth.uid() and addressee_id = user_id)
+          or (requester_id = user_id and addressee_id = auth.uid())
+        )
+    )
+  );
+
+-- Index for date-based queries
+create index if not exists water_logs_user_date_idx on public.water_logs (user_id, date);
+
+-- =========================================================
 -- FRIENDSHIPS TABLE
 -- =========================================================
 create table if not exists public.friendships (
