@@ -56,8 +56,21 @@ create table if not exists public.foods (
   carbs_per_100g numeric(7,2) not null default 0,
   fats_per_100g numeric(7,2) not null default 0,
   is_public boolean not null default false,
+  created_from_ingredients boolean not null default false,
+  ingredient_rows jsonb,
+  input_basis text check (input_basis in ('per_100g', 'per_100ml', 'per_piece')) default 'per_100g',
+  piece_weight_g numeric(7,2),
   created_at timestamptz default now() not null
 );
+
+alter table public.foods
+  add column if not exists created_from_ingredients boolean not null default false;
+alter table public.foods
+  add column if not exists ingredient_rows jsonb;
+alter table public.foods
+  add column if not exists input_basis text check (input_basis in ('per_100g', 'per_100ml', 'per_piece')) default 'per_100g';
+alter table public.foods
+  add column if not exists piece_weight_g numeric(7,2);
 
 -- Row Level Security for foods
 alter table public.foods enable row level security;
