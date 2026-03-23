@@ -25,6 +25,7 @@ type FormData = z.infer<typeof schema>;
 type ActiveTab = 'my-foods' | 'public-foods';
 type InputBasis = 'per_100g' | 'per_100ml' | 'per_piece';
 type IngredientRow = { foodId: string; amountG: string };
+type PersistedIngredientRow = { food_id: string; amount_g: number };
 
 const BASIS_LABELS: Record<InputBasis, string> = {
   per_100g: '100g',
@@ -232,6 +233,7 @@ export default function FoodsPage() {
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
+    const parsedPieceWeight = parseFloat(pieceWeightG);
     let calories = data.calories_per_100g;
     let protein = data.protein_per_100g;
     let carbs = data.carbs_per_100g;
@@ -247,12 +249,11 @@ export default function FoodsPage() {
       carbs = ingredientRecipe.per100.carbs;
       fats = ingredientRecipe.per100.fats;
     } else if (inputBasis === 'per_piece') {
-      const pieceWeight = parseFloat(pieceWeightG);
-      if (Number.isNaN(pieceWeight) || pieceWeight <= 0) {
+      if (Number.isNaN(parsedPieceWeight) || parsedPieceWeight <= 0) {
         alert('Please enter a piece weight greater than 0 grams.');
         return;
       }
-      const normalizeFactor = 100 / pieceWeight;
+      const normalizeFactor = 100 / parsedPieceWeight;
       calories = roundToOneDecimalPlace(calories * normalizeFactor);
       protein = roundToOneDecimalPlace(protein * normalizeFactor);
       carbs = roundToOneDecimalPlace(carbs * normalizeFactor);
@@ -266,8 +267,14 @@ export default function FoodsPage() {
             if (!row.foodId || Number.isNaN(amountG) || amountG <= 0) return null;
             return { food_id: row.foodId, amount_g: roundToOneDecimalPlace(amountG) };
           })
-          .filter((row): row is { food_id: string; amount_g: number } => row !== null)
+          .filter((row): row is PersistedIngredientRow => row !== null)
       : null;
+
+    const shouldPersistPieceWeight =
+      !useIngredientBuilder &&
+      inputBasis === 'per_piece' &&
+      !Number.isNaN(parsedPieceWeight) &&
+      parsedPieceWeight > 0;
 
     const payload = {
       ...data,
@@ -279,8 +286,8 @@ export default function FoodsPage() {
       created_from_ingredients: useIngredientBuilder,
       ingredient_rows: persistedIngredientRows,
       input_basis: inputBasis,
-      piece_weight_g: !useIngredientBuilder && inputBasis === 'per_piece'
-        ? roundToOneDecimalPlace(parseFloat(pieceWeightG))
+      piece_weight_g: shouldPersistPieceWeight
+        ? roundToOneDecimalPlace(parsedPieceWeight)
         : null,
     };
 
@@ -320,14 +327,12 @@ export default function FoodsPage() {
     setShowForm(true);
     const isIngredientBased = Boolean(food.created_from_ingredients);
     setUseIngredientBuilder(isIngredientBased);
-    setInputBasis(food.input_basis ?? 'per_100g');
+    setInputBasis(food.input_basis);
     setPieceWeightG(food.piece_weight_g ? String(food.piece_weight_g) : '');
-    const restoredRows = (food.ingredient_rows ?? [])
-      .map((row) => ({
-        foodId: row.food_id,
-        amountG: String(row.amount_g),
-      }))
-      .filter((row) => row.foodId);
+    const restoredRows = (food.ingredient_rows ?? []).map((row) => ({
+      foodId: row.food_id,
+      amountG: String(row.amount_g),
+    }));
     setIngredientRows(restoredRows.length > 0 ? restoredRows : [{ foodId: '', amountG: '' }]);
   }
 
@@ -517,7 +522,7 @@ export default function FoodsPage() {
                     </div>
                     {ingredientRecipe && (
                       <p className="text-xs text-gray-600 bg-white border border-gray-200 rounded-lg px-3 py-2">
-                        Generated macros per 100g: {ingredientRecipe.per100.calories} kcal,{' '}
+                        Generated macros per {BASIS_LABELS.per_100g}: {ingredientRecipe.per100.calories} kcal,{' '}
                         {ingredientRecipe.per100.protein}g protein, {ingredientRecipe.per100.carbs}g carbs,{' '}
                         {ingredientRecipe.per100.fats}g fats
                       </p>
