@@ -159,7 +159,7 @@ After getting your Vercel URL:
 ### Logging Meals
 1. Click any date on the **Dashboard calendar** (or use **Today** in the nav).
 2. Under each meal section (Breakfast, Lunch, Snack, Dinner), click **"Add Food"**.
-3. Select a food from your list and enter the amount in grams.
+3. Select a food from your list and enter the amount in grams (or pieces for foods configured per piece).
 4. The macros are automatically calculated and totaled.
 5. Use the weight input at the top of the day view to log your body weight.
 
