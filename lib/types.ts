@@ -1,5 +1,24 @@
 export type MealType = 'breakfast' | 'lunch' | 'snack' | 'dinner';
 
+export interface Profile {
+  id: string;
+  username: string;
+  display_name: string;
+  created_at: string;
+}
+
+export type FriendshipStatus = 'pending' | 'accepted' | 'rejected';
+
+export interface Friendship {
+  id: string;
+  requester_id: string;
+  addressee_id: string;
+  status: FriendshipStatus;
+  created_at: string;
+  requester?: Profile;
+  addressee?: Profile;
+}
+
 export interface Food {
   id: string;
   user_id: string;
@@ -8,6 +27,7 @@ export interface Food {
   protein_per_100g: number;
   carbs_per_100g: number;
   fats_per_100g: number;
+  is_public: boolean;
   created_at: string;
 }
 

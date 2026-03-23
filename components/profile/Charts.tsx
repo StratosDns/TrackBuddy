@@ -19,6 +19,12 @@ interface MacroChartData {
   fats: number;
 }
 
+export interface VisibleMacros {
+  protein: boolean;
+  carbs: boolean;
+  fats: boolean;
+}
+
 export function WeightChart({ data }: { data: WeightChartData[] }) {
   if (data.length === 0) {
     return (
@@ -84,11 +90,26 @@ export function CalorieChart({ data }: { data: MacroChartData[] }) {
   );
 }
 
-export function MacroChart({ data }: { data: MacroChartData[] }) {
+export function MacroChart({
+  data,
+  visibleMacros = { protein: true, carbs: true, fats: true },
+}: {
+  data: MacroChartData[];
+  visibleMacros?: VisibleMacros;
+}) {
   if (data.length === 0) {
     return (
       <div className="flex items-center justify-center h-40 text-sm text-gray-400">
         No macro data yet
+      </div>
+    );
+  }
+
+  const noneVisible = !visibleMacros.protein && !visibleMacros.carbs && !visibleMacros.fats;
+  if (noneVisible) {
+    return (
+      <div className="flex items-center justify-center h-40 text-sm text-gray-400">
+        Select at least one macro to display
       </div>
     );
   }
@@ -108,9 +129,15 @@ export function MacroChart({ data }: { data: MacroChartData[] }) {
           formatter={(v, name) => [`${v}g`, name]}
         />
         <Legend />
-        <Bar dataKey="protein" fill="#3b82f6" name="Protein" radius={[4, 4, 0, 0]} />
-        <Bar dataKey="carbs" fill="#eab308" name="Carbs" radius={[4, 4, 0, 0]} />
-        <Bar dataKey="fats" fill="#ef4444" name="Fats" radius={[4, 4, 0, 0]} />
+        {visibleMacros.protein && (
+          <Bar dataKey="protein" fill="#3b82f6" name="Protein" radius={[4, 4, 0, 0]} />
+        )}
+        {visibleMacros.carbs && (
+          <Bar dataKey="carbs" fill="#eab308" name="Carbs" radius={[4, 4, 0, 0]} />
+        )}
+        {visibleMacros.fats && (
+          <Bar dataKey="fats" fill="#ef4444" name="Fats" radius={[4, 4, 0, 0]} />
+        )}
       </BarChart>
     </ResponsiveContainer>
   );
