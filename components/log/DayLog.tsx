@@ -162,18 +162,19 @@ function MealSection({ meal, logs, macros, foods, date, onDelete, onAdded, addin
   const [saving, setSaving] = useState(false);
 
   const selectedFood = foods.find((f) => f.id === foodId);
-  const canLogByPieces = Boolean(
-    selectedFood &&
-    selectedFood.input_basis === 'per_piece' &&
+  const pieceWeightG =
+    selectedFood?.input_basis === 'per_piece' &&
     selectedFood.piece_weight_g &&
     selectedFood.piece_weight_g > 0
-  );
+      ? selectedFood.piece_weight_g
+      : null;
+  const canLogByPieces = pieceWeightG !== null;
   const parsedAmount = parseFloat(amountInput);
   const amountInGrams =
     Number.isNaN(parsedAmount) || parsedAmount <= 0
       ? null
       : canLogByPieces && amountUnit === 'pieces'
-        ? parsedAmount * (selectedFood?.piece_weight_g || 0)
+        ? parsedAmount * pieceWeightG!
         : parsedAmount;
   const preview = selectedFood && amountInGrams ? calcMacros(selectedFood, amountInGrams) : null;
 
@@ -278,9 +279,9 @@ function MealSection({ meal, logs, macros, foods, date, onDelete, onAdded, addin
             value={amountInput}
             onChange={(e) => setAmountInput(e.target.value)}
           />
-          {canLogByPieces && amountUnit === 'pieces' && selectedFood?.piece_weight_g && amountInGrams && (
+          {canLogByPieces && amountUnit === 'pieces' && amountInGrams && (
             <p className="text-xs text-gray-500">
-              This equals {Math.round(amountInGrams * 10) / 10}g ({selectedFood.piece_weight_g}g per piece).
+              This equals {Math.round(amountInGrams * 10) / 10}g ({pieceWeightG!}g per piece).
             </p>
           )}
           {preview && (
