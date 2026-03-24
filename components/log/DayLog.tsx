@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { format, parseISO } from 'date-fns';
 import { createClient } from '@/lib/supabase/client';
 import {
@@ -234,9 +234,14 @@ function MealSection({ meal, logs, macros, foods, date, onDelete, onUpdate, onAd
   const [exploreFoods, setExploreFoods] = useState<Food[]>([]);
   const [exploreLoading, setExploreLoading] = useState(false);
   const [selectedExploreFood, setSelectedExploreFood] = useState<Food | null>(null);
+  const [myFoodSearch, setMyFoodSearch] = useState('');
   const [editingLogId, setEditingLogId] = useState<string | null>(null);
   const [editingAmountInput, setEditingAmountInput] = useState('');
   const [editingAmountUnit, setEditingAmountUnit] = useState<'grams' | 'pieces'>('grams');
+  const filteredMyFoods = useMemo(() => {
+    const trimmed = myFoodSearch.trim().toLowerCase();
+    return foods.filter((food) => !trimmed || food.name.toLowerCase().includes(trimmed));
+  }, [foods, myFoodSearch]);
 
   const selectedFood = foodSearchTab === 'my-foods'
     ? foods.find((f) => f.id === foodId)
@@ -322,6 +327,7 @@ function MealSection({ meal, logs, macros, foods, date, onDelete, onUpdate, onAd
     setAmountUnit('grams');
     setSelectedExploreFood(null);
     setExploreSearch('');
+    setMyFoodSearch('');
     setSaving(false);
     onAdded();
     onToggleAdd();
@@ -360,7 +366,7 @@ function MealSection({ meal, logs, macros, foods, date, onDelete, onUpdate, onAd
 
   return (
     <Card>
-      <div className="flex items-center justify-between mb-4">
+      <div className="mb-4 flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h3 className="font-semibold text-gray-800 capitalize">{MEAL_LABELS[meal]}</h3>
           {logs.length > 0 && (
@@ -380,7 +386,13 @@ function MealSection({ meal, logs, macros, foods, date, onDelete, onUpdate, onAd
           <div className="flex gap-1 border-b border-gray-200">
             <button
               type="button"
-              onClick={() => { setFoodSearchTab('my-foods'); setSelectedExploreFood(null); setAmountInput(''); setAmountUnit('grams'); }}
+              onClick={() => {
+                setFoodSearchTab('my-foods');
+                setSelectedExploreFood(null);
+                setAmountInput('');
+                setAmountUnit('grams');
+                setMyFoodSearch('');
+              }}
               className={`px-3 py-1.5 text-xs font-medium border-b-2 transition-colors -mb-px
                 ${foodSearchTab === 'my-foods' ? 'border-green-600 text-green-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
             >
@@ -388,7 +400,13 @@ function MealSection({ meal, logs, macros, foods, date, onDelete, onUpdate, onAd
             </button>
             <button
               type="button"
-              onClick={() => { setFoodSearchTab('explore'); setFoodId(''); setAmountInput(''); setAmountUnit('grams'); }}
+              onClick={() => {
+                setFoodSearchTab('explore');
+                setFoodId('');
+                setAmountInput('');
+                setAmountUnit('grams');
+                setMyFoodSearch('');
+              }}
               className={`px-3 py-1.5 text-xs font-medium border-b-2 transition-colors -mb-px flex items-center gap-1
                 ${foodSearchTab === 'explore' ? 'border-green-600 text-green-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
             >
@@ -399,6 +417,16 @@ function MealSection({ meal, logs, macros, foods, date, onDelete, onUpdate, onAd
 
           {foodSearchTab === 'my-foods' && (
             <div className="flex flex-col gap-1">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+                <input
+                  type="text"
+                  placeholder="Search your foods…"
+                  value={myFoodSearch}
+                  onChange={(e) => setMyFoodSearch(e.target.value)}
+                  className="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 outline-none focus:border-green-500 focus:ring-2 focus:ring-green-200"
+                />
+              </div>
               <label className="text-sm font-medium text-gray-700">Select food</label>
               <select
                 value={foodId}
@@ -412,7 +440,7 @@ function MealSection({ meal, logs, macros, foods, date, onDelete, onUpdate, onAd
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none focus:border-green-500 focus:ring-2 focus:ring-green-200"
               >
                 <option value="">-- Choose a food --</option>
-                {foods.map((f) => (
+                {filteredMyFoods.map((f) => (
                   <option key={f.id} value={f.id}>
                     {f.name} ({f.calories_per_100g} kcal/100g)
                   </option>
@@ -421,6 +449,11 @@ function MealSection({ meal, logs, macros, foods, date, onDelete, onUpdate, onAd
               {foods.length === 0 && (
                 <p className="text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2 border border-amber-100">
                   No custom foods yet. Go to <strong>My Foods</strong> to add some, or use <strong>Explore</strong> to log public foods!
+                </p>
+              )}
+              {foods.length > 0 && filteredMyFoods.length === 0 && (
+                <p className="text-xs text-gray-500 bg-gray-100 rounded-lg px-3 py-2 border border-gray-200">
+                  No personal foods match your search. Try a different term or add foods in My Foods.
                 </p>
               )}
             </div>
@@ -554,7 +587,7 @@ function MealSection({ meal, logs, macros, foods, date, onDelete, onUpdate, onAd
                 key={log.id}
                 className="py-2 border-b border-gray-50 last:border-0"
               >
-                <div className="flex items-center justify-between gap-3">
+                <div className="flex flex-wrap items-start gap-2 sm:items-center">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 min-w-0">
                       <span className="inline-flex items-center justify-center h-5 min-w-5 px-1.5 rounded-full bg-gray-200 text-[10px] font-semibold text-gray-600 shrink-0">
@@ -563,7 +596,6 @@ function MealSection({ meal, logs, macros, foods, date, onDelete, onUpdate, onAd
                       <p className="text-sm font-medium text-gray-800 truncate">{log.food?.name}</p>
                     </div>
                   </div>
-                  {macros && <MacroBadge {...macros} compact />}
                   <div className="flex items-center gap-1 shrink-0">
                     {editingLogId === log.id ? (
                       <>
@@ -599,6 +631,11 @@ function MealSection({ meal, logs, macros, foods, date, onDelete, onUpdate, onAd
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
+                  {macros && (
+                    <div className="basis-full sm:basis-auto">
+                      <MacroBadge {...macros} compact />
+                    </div>
+                  )}
                 </div>
                 {editingLogId === log.id && (
                   <div className="mt-2 flex flex-col gap-2">
