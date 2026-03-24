@@ -81,6 +81,7 @@ export default function WorkoutLog({ date }: WorkoutLogProps) {
   const [workoutLogs, setWorkoutLogs] = useState<WorkoutLogType[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingSet, setSavingSet] = useState(false);
+  const [saveError, setSaveError] = useState('');
 
   const [exerciseSearch, setExerciseSearch] = useState('');
   const [selectedExerciseId, setSelectedExerciseId] = useState('');
@@ -190,6 +191,7 @@ export default function WorkoutLog({ date }: WorkoutLogProps) {
 
   async function saveWorkoutEntry() {
     const supabase = createClient();
+    setSaveError('');
     if (!selectedExerciseId) return;
     const parsedRows = setRows
       .map((row) => ({ reps: Number(row.reps), weight_kg: Number(row.weight_kg) }))
@@ -218,6 +220,7 @@ export default function WorkoutLog({ date }: WorkoutLogProps) {
         .from('workout_logs')
         .update(payload)
         .eq('id', editingLogId)
+        .eq('user_id', user.id)
       : supabase
         .from('workout_logs')
         .insert({ ...payload, user_id: user.id, date });
@@ -236,11 +239,11 @@ export default function WorkoutLog({ date }: WorkoutLogProps) {
           ? prev.map((log) => (log.id === editingLogId ? mapped : log))
           : [...prev, mapped]
       ));
-      setEditingLogId(null);
-      setExerciseSearch('');
-      setSelectedExerciseId('');
-      setSetRows([{ reps: '', weight_kg: '' }]);
-      setNotes('');
+      resetWorkoutForm();
+    } else if (editingLogId) {
+      setSaveError('Unable to update this workout log. Please try again.');
+    } else {
+      setSaveError('Unable to save this workout log. Please try again.');
     }
 
     setSavingSet(false);
@@ -264,12 +267,16 @@ export default function WorkoutLog({ date }: WorkoutLogProps) {
     setNotes(log.notes || '');
   }
 
-  function cancelEditingWorkoutEntry() {
+  function resetWorkoutForm() {
     setEditingLogId(null);
     setSelectedExerciseId('');
     setExerciseSearch('');
     setSetRows([{ reps: '', weight_kg: '' }]);
     setNotes('');
+  }
+
+  function cancelEditingWorkoutEntry() {
+    resetWorkoutForm();
   }
 
   const totalSetsToday = workoutLogs.reduce((sum, log) => sum + log.set_rows.length, 0);
@@ -427,6 +434,7 @@ export default function WorkoutLog({ date }: WorkoutLogProps) {
                 </Button>
               )}
             </div>
+            {saveError && <p className="mt-2 text-xs text-red-600">{saveError}</p>}
           </div>
         </div>
 

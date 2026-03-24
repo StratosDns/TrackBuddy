@@ -28,6 +28,7 @@ export default function DayLog({ date }: Props) {
   const [waterInput, setWaterInput] = useState('');
   const [addingMeal, setAddingMeal] = useState<MealType | null>(null);
   const [loading, setLoading] = useState(true);
+  const [foodLogUpdateError, setFoodLogUpdateError] = useState('');
 
   const loadData = useCallback(async () => {
     const supabase = createClient();
@@ -172,14 +173,30 @@ export default function DayLog({ date }: Props) {
           onDelete={deleteLog}
           onUpdate={async (id, amountG) => {
             const supabase = createClient();
-            await supabase.from('food_logs').update({ amount_g: amountG }).eq('id', id);
-            setLogs((prev) => prev.map((log) => (log.id === id ? { ...log, amount_g: amountG } : log)));
+            setFoodLogUpdateError('');
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) {
+              setFoodLogUpdateError('You must be signed in to edit a food entry.');
+              return;
+            }
+            const { data, error } = await supabase
+              .from('food_logs')
+              .update({ amount_g: amountG })
+              .eq('id', id)
+              .eq('user_id', user.id)
+              .select('id');
+            if (!error && data && data.length > 0) {
+              setLogs((prev) => prev.map((log) => (log.id === id ? { ...log, amount_g: amountG } : log)));
+            } else {
+              setFoodLogUpdateError('Unable to update this food entry. Please refresh and try again.');
+            }
           }}
           onAdded={loadData}
           adding={addingMeal === meal}
           onToggleAdd={() => setAddingMeal(addingMeal === meal ? null : meal)}
         />
       ))}
+      {foodLogUpdateError && <p className="text-xs text-red-600">{foodLogUpdateError}</p>}
     </div>
   );
 }
@@ -200,6 +217,12 @@ interface MealSectionProps {
 }
 
 type FoodSearchTab = 'my-foods' | 'explore';
+// These are strings because HTML input `min`/`step` attributes expect string values.
+// Pieces support fractional edits, while grams allow whole-number stepping from 0.
+const PIECES_MIN = '0.1';
+const PIECES_STEP = '0.1';
+const GRAMS_MIN = '0';
+const GRAMS_STEP = '1';
 
 function MealSection({ meal, logs, macros, foods, date, onDelete, onUpdate, onAdded, adding, onToggleAdd }: MealSectionProps) {
   const [foodSearchTab, setFoodSearchTab] = useState<FoodSearchTab>('my-foods');
@@ -243,6 +266,13 @@ function MealSection({ meal, logs, macros, foods, date, onDelete, onUpdate, onAd
     const rounded = Math.round(amount * 10) / 10;
     const formatted = Number.isInteger(rounded) ? rounded.toFixed(0) : rounded.toString();
     return canShowPieces ? formatted : `${formatted}g`;
+  };
+
+  const getEditablePieceWeight = (food: Food | undefined): number | null => {
+    const parsed = food?.piece_weight_g != null ? Number(food.piece_weight_g) : null;
+    if (food?.input_basis !== 'per_piece') return null;
+    if (!parsed || parsed <= 0) return null;
+    return parsed;
   };
 
   useEffect(() => {
@@ -298,9 +328,9 @@ function MealSection({ meal, logs, macros, foods, date, onDelete, onUpdate, onAd
   }
 
   function beginEdit(log: LogEntry) {
-    const parsedPieceWeight = log.food?.piece_weight_g != null ? Number(log.food.piece_weight_g) : null;
-    const canUsePieces = log.food?.input_basis === 'per_piece' && !!parsedPieceWeight && parsedPieceWeight > 0;
-    const amountValue = canUsePieces ? log.amount_g / parsedPieceWeight : log.amount_g;
+    const editablePieceWeight = getEditablePieceWeight(log.food);
+    const canUsePieces = editablePieceWeight !== null;
+    const amountValue = canUsePieces ? log.amount_g / editablePieceWeight : log.amount_g;
     const rounded = Math.round(amountValue * 10) / 10;
 
     setEditingLogId(log.id);
@@ -318,10 +348,10 @@ function MealSection({ meal, logs, macros, foods, date, onDelete, onUpdate, onAd
     const parsedAmount = parseFloat(editingAmountInput);
     if (Number.isNaN(parsedAmount) || parsedAmount <= 0) return;
 
-    const parsedPieceWeight = log.food?.piece_weight_g != null ? Number(log.food.piece_weight_g) : null;
-    const canUsePieces = log.food?.input_basis === 'per_piece' && !!parsedPieceWeight && parsedPieceWeight > 0;
+    const editablePieceWeight = getEditablePieceWeight(log.food);
+    const canUsePieces = editablePieceWeight !== null;
     const amountG = canUsePieces && editingAmountUnit === 'pieces'
-      ? parsedAmount * parsedPieceWeight
+      ? parsedAmount * editablePieceWeight
       : parsedAmount;
 
     await onUpdate(log.id, amountG);
@@ -572,7 +602,7 @@ function MealSection({ meal, logs, macros, foods, date, onDelete, onUpdate, onAd
                 </div>
                 {editingLogId === log.id && (
                   <div className="mt-2 flex flex-col gap-2">
-                    {log.food?.input_basis === 'per_piece' && log.food.piece_weight_g ? (
+                    {getEditablePieceWeight(log.food) !== null ? (
                       <div className="flex gap-2">
                         <button
                           type="button"
@@ -600,8 +630,8 @@ function MealSection({ meal, logs, macros, foods, date, onDelete, onUpdate, onAd
                     ) : null}
                     <input
                       type="number"
-                      min={editingAmountUnit === 'pieces' ? '0.1' : '1'}
-                      step={editingAmountUnit === 'pieces' ? '0.1' : '1'}
+                      min={editingAmountUnit === 'pieces' ? PIECES_MIN : GRAMS_MIN}
+                      step={editingAmountUnit === 'pieces' ? PIECES_STEP : GRAMS_STEP}
                       value={editingAmountInput}
                       onChange={(e) => setEditingAmountInput(e.target.value)}
                       className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none focus:border-green-500 focus:ring-2 focus:ring-green-200"
