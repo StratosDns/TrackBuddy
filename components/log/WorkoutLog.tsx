@@ -378,7 +378,7 @@ export default function WorkoutLog({ date }: WorkoutLogProps) {
           </div>
           <div className="space-y-2">
             {setRows.map((row, index) => (
-              <div key={index} className="grid grid-cols-[1fr_1fr_auto] gap-2 items-center">
+              <div key={index} className="grid grid-cols-1 gap-2 items-center sm:grid-cols-[1fr_1fr_auto]">
                 <input
                   type="number"
                   min="1"
@@ -458,7 +458,10 @@ export default function WorkoutLog({ date }: WorkoutLogProps) {
         ) : (
           <div className="space-y-2">
             {workoutLogs.map((log) => (
-              <div key={log.id} className="rounded-xl border border-gray-200 p-3 flex items-start justify-between gap-3">
+              <div
+                key={log.id}
+                className="rounded-xl border border-gray-200 p-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"
+              >
                 <div>
                   <p className="font-medium text-gray-900">{log.exercise?.name || 'Exercise'}</p>
                   <p className="text-xs text-gray-500 mt-0.5">
