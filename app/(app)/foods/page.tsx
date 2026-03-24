@@ -270,11 +270,14 @@ export default function FoodsPage() {
           .filter((row): row is PersistedIngredientRow => row !== null)
       : null;
 
-    const shouldPersistPieceWeight =
-      !useIngredientBuilder &&
-      inputBasis === 'per_piece' &&
-      !Number.isNaN(parsedPieceWeight) &&
-      parsedPieceWeight > 0;
+    const pieceWeightToPersist =
+      inputBasis === 'per_piece'
+        ? useIngredientBuilder
+          ? ingredientRecipe?.totalWeightG ?? null
+          : !Number.isNaN(parsedPieceWeight) && parsedPieceWeight > 0
+            ? parsedPieceWeight
+            : null
+        : null;
 
     const payload = {
       ...data,
@@ -286,8 +289,8 @@ export default function FoodsPage() {
       created_from_ingredients: useIngredientBuilder,
       ingredient_rows: persistedIngredientRows,
       input_basis: inputBasis,
-      piece_weight_g: shouldPersistPieceWeight
-        ? roundToOneDecimalPlace(parsedPieceWeight)
+      piece_weight_g: pieceWeightToPersist !== null
+        ? roundToOneDecimalPlace(pieceWeightToPersist)
         : null,
     };
 
@@ -520,6 +523,11 @@ export default function FoodsPage() {
                         </p>
                       )}
                     </div>
+                    {ingredientRecipe && inputBasis === 'per_piece' && (
+                      <p className="text-xs text-gray-500">
+                        For this food, 1 piece = whole recipe ({ingredientRecipe.totalWeightG}g).
+                      </p>
+                    )}
                     {ingredientRecipe && (
                       <p className="text-xs text-gray-600 bg-white border border-gray-200 rounded-lg px-3 py-2">
                         Generated macros per {BASIS_LABELS.per_100g}: {ingredientRecipe.per100.calories} kcal,{' '}

@@ -18,7 +18,6 @@ interface Props {
 }
 
 type LogEntry = FoodLog & { food: Food };
-const DEFAULT_PIECE_WEIGHT_G = 100;
 
 export default function DayLog({ date }: Props) {
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -206,13 +205,7 @@ function MealSection({ meal, logs, macros, foods, date, onDelete, onAdded, addin
     : null;
   const isPieceFood = selectedFood?.input_basis === 'per_piece';
   const hasPieceWeight = isPieceFood && !!parsedPieceWeightG && parsedPieceWeightG > 0;
-  let pieceWeightG: number | null = null;
-  if (hasPieceWeight) {
-    pieceWeightG = parsedPieceWeightG;
-  } else if (isPieceFood) {
-    // Workaround for legacy foods missing piece_weight_g so users can still log by piece.
-    pieceWeightG = DEFAULT_PIECE_WEIGHT_G;
-  }
+  const pieceWeightG: number | null = hasPieceWeight ? parsedPieceWeightG : null;
   const canLogByPieces = pieceWeightG !== null;
   const parsedAmount = parseFloat(amountInput);
   const amountInGrams =
@@ -331,8 +324,8 @@ function MealSection({ meal, logs, macros, foods, date, onDelete, onAdded, addin
           )}
           {selectedFood?.input_basis === 'per_piece' && !hasPieceWeight && (
             <p className="text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2 border border-amber-100">
-              This food is missing piece-weight metadata. Workaround mode is active (1 piece = 100g).
-              Edit this food in <strong>My Foods</strong> and set piece weight for more precise logging.
+              This food is missing piece-weight metadata, so piece-based logging is unavailable.
+              Edit this food in <strong>My Foods</strong> and set piece weight to enable logging by piece.
             </p>
           )}
           {preview && (
