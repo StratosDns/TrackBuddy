@@ -40,7 +40,7 @@ export default function Navigation() {
   return (
     <>
       {/* Desktop sidebar */}
-      <aside className="hidden md:flex flex-col w-56 bg-white border-r border-gray-200 min-h-screen py-6 px-4 gap-2 fixed top-0 left-0 z-30">
+      <aside className="hidden md:flex flex-col w-64 bg-white border-r border-gray-200 min-h-screen py-6 px-4 gap-2 fixed top-0 left-0 z-30">
         <div className="flex items-center gap-2 mb-6 px-2">
           <div className={`w-8 h-8 ${iconBg} rounded-lg flex items-center justify-center`}>
             <BrandIcon className="w-5 h-5 text-white" />
@@ -52,19 +52,15 @@ export default function Navigation() {
             aria-label={`Switch to ${isGymMode ? 'diet' : 'gym'} world`}
             role="switch"
             aria-checked={isGymMode}
-            className={`ml-auto relative inline-flex h-8 w-24 items-center rounded-full p-1 transition-colors ${
+            className={`ml-auto relative inline-flex h-8 w-16 items-center rounded-full p-1 transition-colors ${
               isGymMode ? 'bg-red-100' : 'bg-green-100'
             }`}
           >
             <span
-              className={`absolute left-1 top-1 h-6 w-10 rounded-full bg-white shadow-sm transition-transform duration-200 ease-out ${
-                isGymMode ? 'translate-x-11' : ''
+              className={`absolute left-1 top-1 h-6 w-6 rounded-full bg-white shadow-sm transition-transform duration-200 ease-out ${
+                isGymMode ? 'translate-x-8' : ''
               }`}
             />
-            <span className="relative z-10 flex w-full text-[10px] font-semibold uppercase tracking-wide">
-              <span className={`flex-1 text-center ${isGymMode ? 'text-red-500' : 'text-green-700'}`}>Diet</span>
-              <span className={`flex-1 text-center ${isGymMode ? 'text-red-700' : 'text-green-500'}`}>Gym</span>
-            </span>
           </button>
         </div>
 
@@ -109,19 +105,15 @@ export default function Navigation() {
             aria-label={`Switch to ${isGymMode ? 'diet' : 'gym'} world`}
             role="switch"
             aria-checked={isGymMode}
-            className={`relative inline-flex h-7 w-20 items-center rounded-full p-1 transition-colors ${
+            className={`relative inline-flex h-7 w-14 items-center rounded-full p-1 transition-colors ${
               isGymMode ? 'bg-red-100' : 'bg-green-100'
             }`}
           >
             <span
-              className={`absolute left-1 top-1 h-5 w-8 rounded-full bg-white shadow-sm transition-transform duration-200 ease-out ${
-                isGymMode ? 'translate-x-10' : ''
+              className={`absolute left-1 top-1 h-5 w-5 rounded-full bg-white shadow-sm transition-transform duration-200 ease-out ${
+                isGymMode ? 'translate-x-7' : ''
               }`}
             />
-            <span className="relative z-10 flex w-full text-[9px] font-semibold uppercase tracking-wide">
-              <span className={`flex-1 text-center ${isGymMode ? 'text-red-500' : 'text-green-700'}`}>Diet</span>
-              <span className={`flex-1 text-center ${isGymMode ? 'text-red-700' : 'text-green-500'}`}>Gym</span>
-            </span>
           </button>
           <button
             onClick={() => setMobileOpen(!mobileOpen)}
