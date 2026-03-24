@@ -7,24 +7,39 @@ import { useRouter } from 'next/navigation';
 import { Calendar, BookOpen, User, Apple, LogOut, Menu, X, Users, Dumbbell } from 'lucide-react';
 import { useState } from 'react';
 import { format } from 'date-fns';
-
-const navItems = [
-  { href: '/dashboard', label: 'Calendar', icon: Calendar },
-  { href: `/log/${format(new Date(), 'yyyy-MM-dd')}`, label: 'Today', icon: BookOpen },
-  { href: '/foods', label: 'My Foods', icon: Apple },
-  { href: '/friends', label: 'Friends', icon: Users },
-  { href: '/profile', label: 'Profile', icon: User },
-];
+import { AppMode, MODE_COOKIE, normalizeMode } from '@/lib/mode';
 
 export default function Navigation() {
   const pathname = usePathname();
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const isGymMode = pathname === '/gym' || pathname.startsWith('/gym/');
+  const isOnGymRoute = pathname === '/gym' || pathname.startsWith('/gym/');
+  const isOnDietRoute = pathname === '/foods' || pathname.startsWith('/foods/');
+  const cookieMode = typeof document === 'undefined'
+    ? 'diet'
+    : normalizeMode(
+      document.cookie
+        .split('; ')
+        .find((entry) => entry.startsWith(`${MODE_COOKIE}=`))
+        ?.split('=')[1]
+    );
+  const mode: AppMode = isOnGymRoute ? 'gym' : isOnDietRoute ? 'diet' : cookieMode;
+  const isGymMode = mode === 'gym';
   const activeClasses = isGymMode ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700';
   const mobileActiveClasses = isGymMode ? 'text-red-600' : 'text-green-600';
   const iconBg = isGymMode ? 'bg-red-600' : 'bg-green-600';
   const BrandIcon = isGymMode ? Dumbbell : Apple;
+  const navItems = [
+    { href: '/dashboard', label: 'Calendar', icon: Calendar },
+    { href: `/log/${format(new Date(), 'yyyy-MM-dd')}`, label: 'Today', icon: BookOpen },
+    { href: isGymMode ? '/gym' : '/foods', label: isGymMode ? 'My Exercises' : 'My Foods', icon: Apple },
+    { href: '/friends', label: 'Friends', icon: Users },
+    { href: '/profile', label: 'Profile', icon: User },
+  ];
+
+  function setModeCookie(nextMode: AppMode) {
+    document.cookie = `${MODE_COOKIE}=${nextMode}; path=/; max-age=31536000; samesite=lax`;
+  }
 
   async function handleSignOut() {
     const supabase = createClient();
@@ -34,7 +49,19 @@ export default function Navigation() {
   }
 
   function toggleWorld() {
-    router.push(isGymMode ? '/dashboard' : '/gym');
+    const nextMode: AppMode = isGymMode ? 'diet' : 'gym';
+    setModeCookie(nextMode);
+    window.dispatchEvent(new CustomEvent('tb-mode-change', { detail: nextMode }));
+
+    if (pathname === '/gym' || pathname.startsWith('/gym/')) {
+      router.push(nextMode === 'diet' ? '/foods' : '/gym');
+      return;
+    }
+    if (pathname === '/foods' || pathname.startsWith('/foods/')) {
+      router.push(nextMode === 'gym' ? '/gym' : '/foods');
+      return;
+    }
+    router.refresh();
   }
 
   return (

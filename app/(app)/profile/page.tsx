@@ -6,7 +6,9 @@ import { createClient } from '@/lib/supabase/client';
 import { Food, FoodLog, WeightLog, Profile, calcMacros, sumMacros, ZERO_MACROS } from '@/lib/types';
 import Card from '@/components/ui/Card';
 import { WeightChart, CalorieChart, MacroChart, VisibleMacros } from '@/components/profile/Charts';
+import GymDashboard from '@/components/profile/GymDashboard';
 import { User, Pencil, Check, X } from 'lucide-react';
+import { MODE_COOKIE, normalizeMode } from '@/lib/mode';
 
 const RANGES = [
   { label: '7 Days', days: 7 },
@@ -44,6 +46,15 @@ export default function ProfilePage() {
   function toggleMacro(key: keyof VisibleMacros) {
     setVisibleMacros((prev) => ({ ...prev, [key]: !prev[key] }));
   }
+
+  const mode = typeof document === 'undefined'
+    ? 'diet'
+    : normalizeMode(
+      document.cookie
+        .split('; ')
+        .find((entry) => entry.startsWith(`${MODE_COOKIE}=`))
+        ?.split('=')[1]
+    );
 
   async function loadData() {
     const supabase = createClient();
@@ -110,6 +121,11 @@ export default function ProfilePage() {
     const weights: WeightLog[] = weightsRes.data || [];
     setWeightData(weights.map((w) => ({ date: w.date, weight: w.weight_kg })));
 
+    if (mode === 'gym') {
+      setMacroData([]);
+      return;
+    }
+
     const logs: (FoodLog & { food: Food })[] = logsRes.data || [];
     const byDay: Record<string, { calories: number; protein: number; carbs: number; fats: number }> = {};
 
@@ -126,7 +142,7 @@ export default function ProfilePage() {
     setMacroData(macros);
   }
 
-  useEffect(() => { loadData(); }, [range, useCustomRange, customStart, customEnd]);
+  useEffect(() => { loadData(); }, [range, useCustomRange, customStart, customEnd, mode]);
 
   async function saveDisplayName() {
     if (!profile) return;
@@ -201,95 +217,101 @@ export default function ProfilePage() {
         </div>
       </div>
 
-      {/* Date range controls */}
-      <div className="flex flex-col gap-3">
-        <div className="flex gap-2 flex-wrap items-center">
-          {!useCustomRange && RANGES.map(({ label, days }) => (
-            <button
-              key={days}
-              onClick={() => setRange(days)}
-              className={`px-4 py-1.5 text-sm rounded-full font-medium border transition-colors
-                ${range === days
-                  ? 'bg-green-600 text-white border-green-600'
-                  : 'bg-white text-gray-600 border-gray-200 hover:border-green-400'
-                }`}
-            >
-              {label}
-            </button>
-          ))}
-          <button
-            onClick={handleCustomRangeToggle}
-            className={`px-4 py-1.5 text-sm rounded-full font-medium border transition-colors
-              ${useCustomRange
-                ? 'bg-green-600 text-white border-green-600'
-                : 'bg-white text-gray-600 border-gray-200 hover:border-green-400'
-              }`}
-          >
-            Custom Range
-          </button>
-        </div>
-
-        {useCustomRange && (
-          <div className="flex flex-wrap gap-3 items-end">
-            <div className="flex flex-col gap-1">
-              <label className="text-xs text-gray-500 font-medium">Start date</label>
-              <input
-                type="date"
-                value={customStart}
-                max={customEnd || today}
-                onChange={(e) => setCustomStart(e.target.value)}
-                className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-              />
-            </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-xs text-gray-500 font-medium">End date</label>
-              <input
-                type="date"
-                value={customEnd}
-                min={customStart}
-                max={today}
-                onChange={(e) => setCustomEnd(e.target.value)}
-                className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-              />
-            </div>
-          </div>
-        )}
-      </div>
-
-      <Card title="Weight Progress">
-        <WeightChart data={weightData} />
-      </Card>
-
-      <Card title="Daily Calories">
-        <CalorieChart data={macroData} />
-      </Card>
-
-      <Card
-        title="Daily Macros"
-        action={
-          <div className="flex gap-2">
-            {(['protein', 'carbs', 'fats'] as const).map((macro) => (
+      {mode === 'gym' ? (
+        <GymDashboard />
+      ) : (
+        <>
+          {/* Date range controls */}
+          <div className="flex flex-col gap-3">
+            <div className="flex gap-2 flex-wrap items-center">
+              {!useCustomRange && RANGES.map(({ label, days }) => (
+                <button
+                  key={days}
+                  onClick={() => setRange(days)}
+                  className={`px-4 py-1.5 text-sm rounded-full font-medium border transition-colors
+                    ${range === days
+                      ? 'bg-green-600 text-white border-green-600'
+                      : 'bg-white text-gray-600 border-gray-200 hover:border-green-400'
+                    }`}
+                >
+                  {label}
+                </button>
+              ))}
               <button
-                key={macro}
-                onClick={() => toggleMacro(macro)}
-                className={`px-3 py-1 text-xs rounded-full font-medium border transition-colors
-                  ${visibleMacros[macro]
-                    ? macro === 'protein'
-                      ? 'bg-blue-500 text-white border-blue-500'
-                      : macro === 'carbs'
-                        ? 'bg-yellow-400 text-white border-yellow-400'
-                        : 'bg-red-500 text-white border-red-500'
-                    : 'bg-white text-gray-400 border-gray-200 hover:border-gray-400'
+                onClick={handleCustomRangeToggle}
+                className={`px-4 py-1.5 text-sm rounded-full font-medium border transition-colors
+                  ${useCustomRange
+                    ? 'bg-green-600 text-white border-green-600'
+                    : 'bg-white text-gray-600 border-gray-200 hover:border-green-400'
                   }`}
               >
-                {macro.charAt(0).toUpperCase() + macro.slice(1)}
+                Custom Range
               </button>
-            ))}
+            </div>
+
+            {useCustomRange && (
+              <div className="flex flex-wrap gap-3 items-end">
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-gray-500 font-medium">Start date</label>
+                  <input
+                    type="date"
+                    value={customStart}
+                    max={customEnd || today}
+                    onChange={(e) => setCustomStart(e.target.value)}
+                    className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-gray-500 font-medium">End date</label>
+                  <input
+                    type="date"
+                    value={customEnd}
+                    min={customStart}
+                    max={today}
+                    onChange={(e) => setCustomEnd(e.target.value)}
+                    className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                  />
+                </div>
+              </div>
+            )}
           </div>
-        }
-      >
-        <MacroChart data={macroData} visibleMacros={visibleMacros} />
-      </Card>
+
+          <Card title="Weight Progress">
+            <WeightChart data={weightData} />
+          </Card>
+
+          <Card title="Daily Calories">
+            <CalorieChart data={macroData} />
+          </Card>
+
+          <Card
+            title="Daily Macros"
+            action={
+              <div className="flex gap-2">
+                {(['protein', 'carbs', 'fats'] as const).map((macro) => (
+                  <button
+                    key={macro}
+                    onClick={() => toggleMacro(macro)}
+                    className={`px-3 py-1 text-xs rounded-full font-medium border transition-colors
+                      ${visibleMacros[macro]
+                        ? macro === 'protein'
+                          ? 'bg-blue-500 text-white border-blue-500'
+                          : macro === 'carbs'
+                            ? 'bg-yellow-400 text-white border-yellow-400'
+                            : 'bg-red-500 text-white border-red-500'
+                        : 'bg-white text-gray-400 border-gray-200 hover:border-gray-400'
+                      }`}
+                  >
+                    {macro.charAt(0).toUpperCase() + macro.slice(1)}
+                  </button>
+                ))}
+              </div>
+            }
+          >
+            <MacroChart data={macroData} visibleMacros={visibleMacros} />
+          </Card>
+        </>
+      )}
     </div>
   );
 }
