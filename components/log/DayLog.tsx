@@ -242,6 +242,27 @@ function MealSection({ meal, logs, macros, foods, date, onDelete, onUpdate, onAd
     const trimmed = myFoodSearch.trim().toLowerCase();
     return foods.filter((food) => !trimmed || food.name.toLowerCase().includes(trimmed));
   }, [foods, myFoodSearch]);
+  const recommendedMyFoods = useMemo(() => {
+    const trimmed = myFoodSearch.trim().toLowerCase();
+    const getScore = (food: Food) => {
+      if (!trimmed) return 0;
+      const name = food.name.toLowerCase();
+      if (name === trimmed) return 0;
+      if (name.startsWith(trimmed)) return 1;
+      if (name.split(/\s+/).some((part) => part.startsWith(trimmed))) return 2;
+      if (name.includes(trimmed)) return 3;
+      return 4;
+    };
+
+    return filteredMyFoods
+      .slice()
+      .sort((a, b) => {
+        const scoreDiff = getScore(a) - getScore(b);
+        if (scoreDiff !== 0) return scoreDiff;
+        return a.name.localeCompare(b.name);
+      })
+      .slice(0, 8);
+  }, [filteredMyFoods, myFoodSearch]);
 
   const selectedFood = foodSearchTab === 'my-foods'
     ? foods.find((f) => f.id === foodId)
@@ -426,6 +447,31 @@ function MealSection({ meal, logs, macros, foods, date, onDelete, onUpdate, onAd
                   onChange={(e) => setMyFoodSearch(e.target.value)}
                   className="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 outline-none focus:border-green-500 focus:ring-2 focus:ring-green-200"
                 />
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {recommendedMyFoods.length === 0 ? (
+                  <p className="text-xs text-gray-500">No food recommendations match your search.</p>
+                ) : (
+                  recommendedMyFoods.map((food) => (
+                    <button
+                      key={food.id}
+                      type="button"
+                      onClick={() => {
+                        setFoodId(food.id);
+                        setAmountInput('');
+                        setAmountUnit(food.input_basis === 'per_piece' ? 'pieces' : 'grams');
+                        setMyFoodSearch(food.name);
+                      }}
+                      className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
+                        foodId === food.id
+                          ? 'border-green-300 bg-green-50 text-green-700'
+                          : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
+                      }`}
+                    >
+                      {food.name}
+                    </button>
+                  ))
+                )}
               </div>
               <label className="text-sm font-medium text-gray-700">Select food</label>
               <select
