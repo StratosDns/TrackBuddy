@@ -11,7 +11,7 @@ import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import MacroBadge from '@/components/ui/MacroBadge';
 import Input from '@/components/ui/Input';
-import { Plus, Trash2, Scale, Droplets } from 'lucide-react';
+import { Plus, Trash2, Scale, Droplets, Search, Globe } from 'lucide-react';
 
 interface Props {
   date: string;
@@ -193,13 +193,22 @@ interface MealSectionProps {
   onToggleAdd: () => void;
 }
 
+type FoodSearchTab = 'my-foods' | 'explore';
+
 function MealSection({ meal, logs, macros, foods, date, onDelete, onAdded, adding, onToggleAdd }: MealSectionProps) {
+  const [foodSearchTab, setFoodSearchTab] = useState<FoodSearchTab>('my-foods');
   const [foodId, setFoodId] = useState('');
   const [amountInput, setAmountInput] = useState('');
   const [amountUnit, setAmountUnit] = useState<'grams' | 'pieces'>('grams');
   const [saving, setSaving] = useState(false);
+  const [exploreSearch, setExploreSearch] = useState('');
+  const [exploreFoods, setExploreFoods] = useState<Food[]>([]);
+  const [exploreLoading, setExploreLoading] = useState(false);
+  const [selectedExploreFood, setSelectedExploreFood] = useState<Food | null>(null);
 
-  const selectedFood = foods.find((f) => f.id === foodId);
+  const selectedFood = foodSearchTab === 'my-foods'
+    ? foods.find((f) => f.id === foodId)
+    : selectedExploreFood ?? undefined;
   const parsedPieceWeightG = selectedFood?.piece_weight_g != null
     ? Number(selectedFood.piece_weight_g)
     : null;
@@ -216,8 +225,34 @@ function MealSection({ meal, logs, macros, foods, date, onDelete, onAdded, addin
         : parsedAmount;
   const preview = selectedFood && amountInGrams ? calcMacros(selectedFood, amountInGrams) : null;
 
+  useEffect(() => {
+    if (foodSearchTab !== 'explore') return;
+    let cancelled = false;
+    const supabase = createClient();
+    const run = async () => {
+      setExploreLoading(true);
+      let q = supabase
+        .from('foods')
+        .select('*')
+        .eq('is_public', true)
+        .order('name')
+        .limit(50);
+      if (exploreSearch.trim()) {
+        q = q.ilike('name', `%${exploreSearch.trim()}%`);
+      }
+      const { data } = await q;
+      if (!cancelled) {
+        setExploreFoods(data || []);
+        setExploreLoading(false);
+      }
+    };
+    run();
+    return () => { cancelled = true; };
+  }, [foodSearchTab, exploreSearch]);
+
   async function addEntry() {
-    if (!foodId || !amountInput || !amountInGrams) return;
+    const logFoodId = foodSearchTab === 'my-foods' ? foodId : selectedExploreFood?.id;
+    if (!logFoodId || !amountInput || !amountInGrams) return;
 
     setSaving(true);
     const supabase = createClient();
@@ -228,13 +263,15 @@ function MealSection({ meal, logs, macros, foods, date, onDelete, onAdded, addin
       user_id: user.id,
       date,
       meal_type: meal,
-      food_id: foodId,
+      food_id: logFoodId,
       amount_g: amountInGrams,
     });
 
     setFoodId('');
     setAmountInput('');
     setAmountUnit('grams');
+    setSelectedExploreFood(null);
+    setExploreSearch('');
     setSaving(false);
     onAdded();
     onToggleAdd();
@@ -258,27 +295,101 @@ function MealSection({ meal, logs, macros, foods, date, onDelete, onAdded, addin
       {/* Add food form */}
       {adding && (
         <div className="bg-gray-50 rounded-xl p-4 mb-4 flex flex-col gap-3">
-          <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium text-gray-700">Select food</label>
-            <select
-              value={foodId}
-              onChange={(e) => {
-                const nextFoodId = e.target.value;
-                const nextFood = foods.find((f) => f.id === nextFoodId);
-                setFoodId(nextFoodId);
-                setAmountInput('');
-                setAmountUnit(nextFood?.input_basis === 'per_piece' ? 'pieces' : 'grams');
-              }}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none focus:border-green-500 focus:ring-2 focus:ring-green-200"
+          {/* My Foods / Explore tabs */}
+          <div className="flex gap-1 border-b border-gray-200">
+            <button
+              type="button"
+              onClick={() => { setFoodSearchTab('my-foods'); setSelectedExploreFood(null); setAmountInput(''); setAmountUnit('grams'); }}
+              className={`px-3 py-1.5 text-xs font-medium border-b-2 transition-colors -mb-px
+                ${foodSearchTab === 'my-foods' ? 'border-green-600 text-green-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
             >
-              <option value="">-- Choose a food --</option>
-              {foods.map((f) => (
-                <option key={f.id} value={f.id}>
-                  {f.name} ({f.calories_per_100g} kcal/100g)
-                </option>
-              ))}
-            </select>
+              My Foods
+            </button>
+            <button
+              type="button"
+              onClick={() => { setFoodSearchTab('explore'); setFoodId(''); setAmountInput(''); setAmountUnit('grams'); }}
+              className={`px-3 py-1.5 text-xs font-medium border-b-2 transition-colors -mb-px flex items-center gap-1
+                ${foodSearchTab === 'explore' ? 'border-green-600 text-green-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+            >
+              <Globe className="w-3 h-3" />
+              Explore
+            </button>
           </div>
+
+          {foodSearchTab === 'my-foods' && (
+            <div className="flex flex-col gap-1">
+              <label className="text-sm font-medium text-gray-700">Select food</label>
+              <select
+                value={foodId}
+                onChange={(e) => {
+                  const nextFoodId = e.target.value;
+                  const nextFood = foods.find((f) => f.id === nextFoodId);
+                  setFoodId(nextFoodId);
+                  setAmountInput('');
+                  setAmountUnit(nextFood?.input_basis === 'per_piece' ? 'pieces' : 'grams');
+                }}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none focus:border-green-500 focus:ring-2 focus:ring-green-200"
+              >
+                <option value="">-- Choose a food --</option>
+                {foods.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.name} ({f.calories_per_100g} kcal/100g)
+                  </option>
+                ))}
+              </select>
+              {foods.length === 0 && (
+                <p className="text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2 border border-amber-100">
+                  No custom foods yet. Go to <strong>My Foods</strong> to add some, or use <strong>Explore</strong> to log public foods!
+                </p>
+              )}
+            </div>
+          )}
+
+          {foodSearchTab === 'explore' && (
+            <div className="flex flex-col gap-2">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+                <input
+                  type="text"
+                  placeholder="Search public foods…"
+                  value={exploreSearch}
+                  onChange={(e) => { setExploreSearch(e.target.value); setSelectedExploreFood(null); setAmountInput(''); }}
+                  className="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 outline-none focus:border-green-500 focus:ring-2 focus:ring-green-200"
+                />
+              </div>
+              {exploreLoading ? (
+                <div className="flex justify-center py-4">
+                  <div className="animate-spin w-4 h-4 border-2 border-green-500 border-t-transparent rounded-full" />
+                </div>
+              ) : exploreFoods.length === 0 ? (
+                <p className="text-xs text-gray-400 text-center py-3">
+                  {exploreSearch ? 'No public foods match your search.' : 'No public foods available.'}
+                </p>
+              ) : (
+                <div className="max-h-48 overflow-y-auto flex flex-col gap-1">
+                  {exploreFoods.map((f) => (
+                    <button
+                      key={f.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedExploreFood(f);
+                        setAmountInput('');
+                        setAmountUnit(f.input_basis === 'per_piece' ? 'pieces' : 'grams');
+                      }}
+                      className={`text-left px-3 py-2 rounded-lg text-sm transition-colors border
+                        ${selectedExploreFood?.id === f.id
+                          ? 'bg-green-50 border-green-300 text-green-800'
+                          : 'bg-white border-gray-200 text-gray-700 hover:border-gray-300'}`}
+                    >
+                      <span className="font-medium">{f.name}</span>
+                      <span className="text-gray-400 text-xs ml-2">{f.calories_per_100g} kcal/100g</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {canLogByPieces && (
             <div className="flex flex-col gap-1">
               <span className="text-sm font-medium text-gray-700">Enter amount as</span>
@@ -308,41 +419,40 @@ function MealSection({ meal, logs, macros, foods, date, onDelete, onAdded, addin
               </div>
             </div>
           )}
-          <Input
-            label={canLogByPieces && amountUnit === 'pieces' ? 'Amount (pieces)' : 'Amount (g)'}
-            type="number"
-            min={canLogByPieces && amountUnit === 'pieces' ? '0.1' : '1'}
-            step={canLogByPieces && amountUnit === 'pieces' ? '0.1' : '1'}
-            placeholder={canLogByPieces && amountUnit === 'pieces' ? 'e.g. 1.5' : 'e.g. 150'}
-            value={amountInput}
-            onChange={(e) => setAmountInput(e.target.value)}
-          />
-          {canLogByPieces && amountUnit === 'pieces' && amountInGrams && (
-            <p className="text-xs text-gray-500">
-              This equals {Math.round(amountInGrams * 10) / 10}g ({pieceWeightG!}g per piece).
-            </p>
-          )}
-          {selectedFood?.input_basis === 'per_piece' && !hasPieceWeight && (
-            <p className="text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2 border border-amber-100">
-              This food is missing piece-weight metadata, so piece-based logging is unavailable.
-              Edit this food in <strong>My Foods</strong> and set piece weight to enable logging by piece.
-            </p>
-          )}
-          {preview && (
-            <div className="text-xs text-gray-500 bg-white border border-gray-200 rounded-lg px-3 py-2">
-              <MacroBadge {...preview} compact />
-            </div>
-          )}
-          {foods.length === 0 && (
-            <p className="text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2 border border-amber-100">
-              No custom foods yet. Go to <strong>My Foods</strong> to add some!
-            </p>
+          {selectedFood && (
+            <>
+              <Input
+                label={canLogByPieces && amountUnit === 'pieces' ? 'Amount (pieces)' : 'Amount (g)'}
+                type="number"
+                min={canLogByPieces && amountUnit === 'pieces' ? '0.1' : '1'}
+                step={canLogByPieces && amountUnit === 'pieces' ? '0.1' : '1'}
+                placeholder={canLogByPieces && amountUnit === 'pieces' ? 'e.g. 1.5' : 'e.g. 150'}
+                value={amountInput}
+                onChange={(e) => setAmountInput(e.target.value)}
+              />
+              {canLogByPieces && amountUnit === 'pieces' && amountInGrams && (
+                <p className="text-xs text-gray-500">
+                  This equals {Math.round(amountInGrams * 10) / 10}g ({pieceWeightG!}g per piece).
+                </p>
+              )}
+              {selectedFood?.input_basis === 'per_piece' && !hasPieceWeight && (
+                <p className="text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2 border border-amber-100">
+                  This food is missing piece-weight metadata, so piece-based logging is unavailable.
+                  Edit this food in <strong>My Foods</strong> and set piece weight to enable logging by piece.
+                </p>
+              )}
+              {preview && (
+                <div className="text-xs text-gray-500 bg-white border border-gray-200 rounded-lg px-3 py-2">
+                  <MacroBadge {...preview} compact />
+                </div>
+              )}
+            </>
           )}
           <Button
             size="sm"
             onClick={addEntry}
             loading={saving}
-            disabled={!foodId || !amountInput}
+            disabled={foodSearchTab === 'my-foods' ? (!foodId || !amountInput) : (!selectedExploreFood || !amountInput)}
           >
             Add to {MEAL_LABELS[meal]}
           </Button>

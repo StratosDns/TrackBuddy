@@ -130,6 +130,7 @@ export default function FoodsPage() {
   const [pieceWeightG, setPieceWeightG] = useState('');
   const [useIngredientBuilder, setUseIngredientBuilder] = useState(false);
   const [ingredientRows, setIngredientRows] = useState<IngredientRow[]>([{ foodId: '', amountG: '' }]);
+  const [copyingFood, setCopyingFood] = useState<Food | null>(null);
 
   const {
     register,
@@ -355,6 +356,37 @@ export default function FoodsPage() {
     setFoods((prev) => prev.filter((f) => f.id !== id));
   }
 
+  function startCopyFromPublic(food: Food) {
+    setCopyingFood(food);
+  }
+
+  async function saveCopiedFood(data: FormData) {
+    if (!copyingFood) return;
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { error } = await supabase.from('foods').insert({
+      user_id: user.id,
+      name: data.name,
+      calories_per_100g: data.calories_per_100g,
+      protein_per_100g: data.protein_per_100g,
+      carbs_per_100g: data.carbs_per_100g,
+      fats_per_100g: data.fats_per_100g,
+      is_public: false,
+      created_from_ingredients: false,
+      ingredient_rows: null,
+      input_basis: copyingFood.input_basis,
+      piece_weight_g: copyingFood.piece_weight_g,
+    });
+    if (error) {
+      alert(error.message);
+      return;
+    }
+    setCopyingFood(null);
+    await loadFoods();
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -401,7 +433,7 @@ export default function FoodsPage() {
             }`}
         >
           <Globe className="w-3.5 h-3.5" />
-          Public Foods
+          Explore
         </button>
       </div>
 
@@ -670,12 +702,128 @@ export default function FoodsPage() {
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {publicFoods.map((food) => (
-                <FoodCard key={food.id} food={food} showActions={false} />
+                <div key={food.id} className="flex flex-col gap-2">
+                  <FoodCard food={food} showActions={false} />
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => startCopyFromPublic(food)}
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Add to My Foods
+                  </Button>
+                </div>
               ))}
             </div>
           )}
         </div>
       )}
+
+      {/* Copy/Customize modal */}
+      {copyingFood && (
+        <CopyFoodModal
+          food={copyingFood}
+          onSave={saveCopiedFood}
+          onCancel={() => setCopyingFood(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── CopyFoodModal ────────────────────────────────────────────────────────────
+
+interface CopyFoodModalProps {
+  food: Food;
+  onSave: (data: FormData) => Promise<void>;
+  onCancel: () => void;
+}
+
+function CopyFoodModal({ food, onSave, onCancel }: CopyFoodModalProps) {
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+  } = useForm<FormData>({
+    resolver: zodResolver(schema) as Resolver<FormData>,
+    defaultValues: {
+      name: food.name,
+      calories_per_100g: food.calories_per_100g,
+      protein_per_100g: food.protein_per_100g,
+      carbs_per_100g: food.carbs_per_100g,
+      fats_per_100g: food.fats_per_100g,
+      is_public: false,
+    },
+  });
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 flex flex-col gap-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-bold text-gray-900">Add to My Foods</h2>
+          <button
+            onClick={onCancel}
+            className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 transition-colors"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <p className="text-sm text-gray-500">
+          Customize this food before saving it to your collection. Changes only affect your account.
+        </p>
+        <form onSubmit={handleSubmit(onSave)} className="flex flex-col gap-4">
+          <Input
+            label="Food name"
+            placeholder="e.g. Chicken Breast"
+            error={errors.name?.message}
+            {...register('name')}
+          />
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              label="Calories (per 100g)"
+              type="number"
+              step="0.1"
+              min="0"
+              error={errors.calories_per_100g?.message}
+              {...register('calories_per_100g')}
+            />
+            <Input
+              label="Protein (g per 100g)"
+              type="number"
+              step="0.1"
+              min="0"
+              error={errors.protein_per_100g?.message}
+              {...register('protein_per_100g')}
+            />
+            <Input
+              label="Carbs (g per 100g)"
+              type="number"
+              step="0.1"
+              min="0"
+              error={errors.carbs_per_100g?.message}
+              {...register('carbs_per_100g')}
+            />
+            <Input
+              label="Fats (g per 100g)"
+              type="number"
+              step="0.1"
+              min="0"
+              error={errors.fats_per_100g?.message}
+              {...register('fats_per_100g')}
+            />
+          </div>
+          <div className="flex gap-3 justify-end">
+            <Button variant="secondary" type="button" onClick={onCancel}>
+              <X className="w-4 h-4" />
+              Cancel
+            </Button>
+            <Button type="submit" loading={isSubmitting}>
+              <Check className="w-4 h-4" />
+              Save to My Foods
+            </Button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }
