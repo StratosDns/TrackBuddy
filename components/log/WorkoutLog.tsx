@@ -50,12 +50,6 @@ function getExerciseWeightRule(exercise?: Exercise): ExerciseWeightRule {
   return MUSCLE_GROUP_WEIGHT_RULES[exercise.muscle_group.toLowerCase()] || DEFAULT_WEIGHT_RULE;
 }
 
-function normalizeWeight(weight: number, rule: ExerciseWeightRule): number {
-  const clamped = clampWeight(weight);
-  const normalized = Math.round(clamped / rule.increment) * rule.increment;
-  return Number(normalized.toFixed(2));
-}
-
 function clampWeight(weight: number): number {
   return Math.max(weight, 0);
 }
@@ -212,7 +206,7 @@ export default function WorkoutLog({ date }: WorkoutLogProps) {
       .filter((row) => !Number.isNaN(row.reps) && row.reps > 0 && !Number.isNaN(row.weight_kg) && row.weight_kg >= 0)
       .map((row) => ({
         reps: row.reps,
-        weight_kg: normalizeWeight(row.weight_kg, selectedExerciseWeightRule),
+        weight_kg: clampWeight(row.weight_kg),
       }));
     if (parsedRows.length === 0) return;
 
@@ -364,7 +358,7 @@ export default function WorkoutLog({ date }: WorkoutLogProps) {
           </select>
           {selectedExercise && (
             <p className="text-xs text-gray-500">
-              Suggestions: reps {repsSuggestionSummary} • weight +{formatWeight(selectedExerciseWeightRule.increment)}kg steps
+              Suggestions: reps {repsSuggestionSummary} • weight +{formatWeight(selectedExerciseWeightRule.increment)}kg recommended steps
             </p>
           )}
         </div>
@@ -398,7 +392,7 @@ export default function WorkoutLog({ date }: WorkoutLogProps) {
                 <input
                   type="number"
                   min="0"
-                  step={selectedExerciseWeightRule.increment}
+                  step="any"
                   list="weight-suggestions-kg"
                   placeholder="Weight (kg)"
                   value={row.weight_kg}
