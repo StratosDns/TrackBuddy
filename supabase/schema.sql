@@ -222,6 +222,120 @@ create policy "Friends can view each other's water logs"
 create index if not exists water_logs_user_date_idx on public.water_logs (user_id, date);
 
 -- =========================================================
+-- EXERCISES TABLE
+-- =========================================================
+create table if not exists public.exercises (
+  id uuid default gen_random_uuid() primary key,
+  user_id uuid references auth.users(id) on delete cascade,
+  name text not null,
+  muscle_group text not null default '',
+  description text not null default '',
+  is_public boolean not null default false,
+  is_preset boolean not null default false,
+  created_at timestamptz default now() not null,
+  unique (user_id, name)
+);
+
+-- Row Level Security for exercises
+alter table public.exercises enable row level security;
+
+-- Users can fully manage their own exercises
+create policy "Users can manage their own exercises"
+  on public.exercises for all
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+-- Public exercises are viewable by authenticated users
+create policy "Public exercises are viewable by authenticated users"
+  on public.exercises for select
+  using (is_public = true);
+
+-- Friends can view each other's exercises
+create policy "Friends can view each others exercises"
+  on public.exercises for select
+  using (
+    exists (
+      select 1 from public.friendships
+      where status = 'accepted'
+        and (
+          (requester_id = auth.uid() and addressee_id = user_id)
+          or (requester_id = user_id and addressee_id = auth.uid())
+        )
+    )
+  );
+
+-- Preset exercises can be inserted by service role (null owner rows)
+create policy "Service role can insert preset exercises"
+  on public.exercises for insert
+  with check (auth.role() = 'service_role' and user_id is null and is_preset = true and is_public = true);
+
+-- Authenticated users can view preset exercises
+create policy "Preset exercises are viewable by authenticated users"
+  on public.exercises for select
+  using (is_preset = true and user_id is null and auth.uid() is not null);
+
+-- Indexes for lookup
+create index if not exists exercises_user_name_idx on public.exercises (user_id, name);
+create index if not exists exercises_public_name_idx on public.exercises (is_public, name);
+create unique index if not exists exercises_preset_name_unique
+  on public.exercises (name)
+  where user_id is null;
+
+-- Seed a small preset exercise catalog
+insert into public.exercises (user_id, name, muscle_group, description, is_public, is_preset)
+values
+  (null, 'Bench Press', 'Chest', 'Barbell press performed on a flat bench.', true, true),
+  (null, 'Squat', 'Legs', 'Compound lower-body lift targeting quads and glutes.', true, true),
+  (null, 'Deadlift', 'Back', 'Hip hinge movement emphasizing posterior chain strength.', true, true),
+  (null, 'Overhead Press', 'Shoulders', 'Vertical pressing movement for shoulder strength.', true, true),
+  (null, 'Barbell Row', 'Back', 'Horizontal pull for back and biceps development.', true, true),
+  (null, 'Pull-Up', 'Back', 'Bodyweight vertical pull exercise.', true, true),
+  (null, 'Dumbbell Curl', 'Arms', 'Isolation movement targeting the biceps.', true, true),
+  (null, 'Triceps Pushdown', 'Arms', 'Cable isolation movement for triceps.', true, true),
+  (null, 'Leg Press', 'Legs', 'Machine-based compound lower-body movement.', true, true),
+  (null, 'Hip Thrust', 'Glutes', 'Hip extension movement emphasizing glute strength.', true, true)
+on conflict do nothing;
+
+-- =========================================================
+-- WORKOUT_LOGS TABLE
+-- =========================================================
+create table if not exists public.workout_logs (
+  id uuid default gen_random_uuid() primary key,
+  user_id uuid references auth.users(id) on delete cascade not null,
+  date date not null,
+  exercise_id uuid references public.exercises(id) on delete cascade not null,
+  set_rows jsonb not null default '[]'::jsonb,
+  notes text not null default '',
+  created_at timestamptz default now() not null
+);
+
+-- Row Level Security for workout_logs
+alter table public.workout_logs enable row level security;
+
+-- Users can fully manage their own workout logs
+create policy "Users can manage their own workout logs"
+  on public.workout_logs for all
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+-- Friends can view each other's workout logs
+create policy "Friends can view each others workout logs"
+  on public.workout_logs for select
+  using (
+    exists (
+      select 1 from public.friendships
+      where status = 'accepted'
+        and (
+          (requester_id = auth.uid() and addressee_id = user_id)
+          or (requester_id = user_id and addressee_id = auth.uid())
+        )
+    )
+  );
+
+-- Index for timeline queries
+create index if not exists workout_logs_user_date_idx on public.workout_logs (user_id, date);
+
+-- =========================================================
 -- FRIENDSHIPS TABLE
 -- =========================================================
 create table if not exists public.friendships (
