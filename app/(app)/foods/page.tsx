@@ -55,7 +55,7 @@ function FoodCard({
   showActions?: boolean;
 }) {
   const [deleteConfirm, setDeleteConfirm] = useState(false);
-  const parsedPieceWeight = food.piece_weight_g != null ? Number(food.piece_weight_g) : null;
+  const parsedPieceWeight = food.piece_weight_g;
   const hasPieceWeight = food.input_basis === 'per_piece' && !!parsedPieceWeight && parsedPieceWeight > 0;
   const displayLabel = hasPieceWeight
     ? BASIS_LABELS.per_piece
@@ -168,7 +168,7 @@ export default function FoodsPage() {
   const selectedBasisLabel = BASIS_LABELS[inputBasis];
   const ingredientOptions = useMemo(() => {
     const deduped = new Map<string, Food>();
-    [...foods, ...ingredientPublicFoods].forEach((food) => deduped.set(food.id, food));
+    [...ingredientPublicFoods, ...foods].forEach((food) => deduped.set(food.id, food));
     return Array.from(deduped.values());
   }, [foods, ingredientPublicFoods]);
 
@@ -252,12 +252,16 @@ export default function FoodsPage() {
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('foods')
       .select('*')
       .eq('is_public', true)
       .order('name')
       .limit(200);
+    if (error) {
+      setIngredientPublicFoods([]);
+      return;
+    }
     setIngredientPublicFoods(data || []);
   }
 
@@ -268,7 +272,7 @@ export default function FoodsPage() {
   }, [activeTab, publicSearch]);
 
   useEffect(() => {
-    loadIngredientPublicFoods();
+    loadIngredientPublicFoods().catch(() => setIngredientPublicFoods([]));
   }, []);
 
   async function onSubmit(data: FormData) {
@@ -851,7 +855,7 @@ function CopyFoodModal({ food, ingredientOptions, onSave, onCancel }: CopyFoodMo
     };
   }, [ingredientOptions, ingredientRows]);
 
-  async function submitCopy(data: FormData) {
+  async function handleCopySubmit(data: FormData) {
     const parsedPieceWeight = parseFloat(pieceWeightG);
     let calories = data.calories_per_100g;
     let protein = data.protein_per_100g;
@@ -928,7 +932,7 @@ function CopyFoodModal({ food, ingredientOptions, onSave, onCancel }: CopyFoodMo
         <p className="text-sm text-gray-500">
           Customize this food before saving it to your collection. Changes only affect your account.
         </p>
-        <form onSubmit={handleSubmit(submitCopy)} className="flex flex-col gap-4">
+        <form onSubmit={handleSubmit(handleCopySubmit)} className="flex flex-col gap-4">
           <Input
             label="Food name"
             placeholder="e.g. Chicken Breast"
