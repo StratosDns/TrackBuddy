@@ -84,7 +84,7 @@ export default function Navigation() {
       {/* Mobile drawer */}
       {mobileOpen && (
         <div
-          className="md:hidden fixed inset-0 z-30 bg-black/40"
+          className="md:hidden fixed inset-0 z-50 bg-black/40"
           onClick={() => setMobileOpen(false)}
         >
           <div
