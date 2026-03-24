@@ -1,13 +1,19 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { subDays, format, parseISO, isAfter } from 'date-fns';
 import { createClient } from '@/lib/supabase/client';
-import { Food, FoodLog, WeightLog, Profile, calcMacros, sumMacros, ZERO_MACROS } from '@/lib/types';
+import { Food, FoodLog, WeightLog, WaterLog, Profile, calcMacros, sumMacros, ZERO_MACROS } from '@/lib/types';
 import Card from '@/components/ui/Card';
-import { WeightChart, CalorieChart, MacroChart, VisibleMacros } from '@/components/profile/Charts';
+import {
+  CustomDiagramChart,
+  DiagramMetric,
+  DiagramStyle,
+  DIAGRAM_METRIC_META,
+  DiagramChartDataPoint,
+} from '@/components/profile/Charts';
 import GymDashboard from '@/components/profile/GymDashboard';
-import { User, Pencil, Check, X } from 'lucide-react';
+import { User, Pencil, Check, X, Plus } from 'lucide-react';
 
 const RANGES = [
   { label: '7 Days', days: 7 },
@@ -19,6 +25,14 @@ const RANGES = [
 interface ProfilePageClientProps {
   mode: 'diet' | 'gym';
 }
+
+interface DiagramConfig {
+  id: string;
+  metrics: DiagramMetric[];
+  style: DiagramStyle;
+}
+
+const DIAGRAM_METRICS: DiagramMetric[] = ['calories', 'water', 'weight', 'carbs', 'fats', 'protein'];
 
 export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -35,20 +49,15 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
 
   // Chart data
   const [weightData, setWeightData] = useState<{ date: string; weight: number }[]>([]);
+  const [waterData, setWaterData] = useState<{ date: string; water: number }[]>([]);
   const [macroData, setMacroData] = useState<{
     date: string; calories: number; protein: number; carbs: number; fats: number;
   }[]>([]);
 
-  // Macro visibility toggles
-  const [visibleMacros, setVisibleMacros] = useState<VisibleMacros>({
-    protein: true,
-    carbs: true,
-    fats: true,
-  });
-
-  function toggleMacro(key: keyof VisibleMacros) {
-    setVisibleMacros((prev) => ({ ...prev, [key]: !prev[key] }));
-  }
+  const [diagramConfigs, setDiagramConfigs] = useState<DiagramConfig[]>([]);
+  const [showDiagramPicker, setShowDiagramPicker] = useState(false);
+  const [pendingMetrics, setPendingMetrics] = useState<DiagramMetric[]>([]);
+  const [pendingStyle, setPendingStyle] = useState<DiagramStyle>('bar');
 
   const loadData = useCallback(async () => {
     const supabase = createClient();
@@ -95,7 +104,7 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
       endDate = format(new Date(), 'yyyy-MM-dd');
     }
 
-    const [logsRes, weightsRes] = await Promise.all([
+    const [logsRes, weightsRes, waterRes] = await Promise.all([
       supabase
         .from('food_logs')
         .select('*, food:foods(*)')
@@ -110,13 +119,24 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
         .gte('date', startDate)
         .lte('date', endDate)
         .order('date'),
+      supabase
+        .from('water_logs')
+        .select('*')
+        .eq('user_id', user.id)
+        .gte('date', startDate)
+        .lte('date', endDate)
+        .order('date'),
     ]);
 
     const weights: WeightLog[] = weightsRes.data || [];
     setWeightData(weights.map((w) => ({ date: w.date, weight: w.weight_kg })));
+    const waters: WaterLog[] = waterRes.data || [];
+    setWaterData(waters.map((w) => ({ date: w.date, water: w.water_ml })));
 
     if (mode === 'gym') {
       setMacroData([]);
+      setWeightData([]);
+      setWaterData([]);
       return;
     }
 
@@ -158,6 +178,61 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
   }
 
   const today = format(new Date(), 'yyyy-MM-dd');
+
+  const diagramData = useMemo<DiagramChartDataPoint[]>(() => {
+    const byDate: Record<string, DiagramChartDataPoint> = {};
+
+    for (const point of macroData) {
+      byDate[point.date] = {
+        ...(byDate[point.date] || { date: point.date }),
+        calories: point.calories,
+        protein: point.protein,
+        carbs: point.carbs,
+        fats: point.fats,
+      };
+    }
+
+    for (const point of weightData) {
+      byDate[point.date] = {
+        ...(byDate[point.date] || { date: point.date }),
+        weight: point.weight,
+      };
+    }
+
+    for (const point of waterData) {
+      byDate[point.date] = {
+        ...(byDate[point.date] || { date: point.date }),
+        water: point.water,
+      };
+    }
+
+    return Object.values(byDate).sort((a, b) => a.date.localeCompare(b.date));
+  }, [macroData, weightData, waterData]);
+
+  function togglePendingMetric(metric: DiagramMetric) {
+    setPendingMetrics((prev) => (
+      prev.includes(metric) ? prev.filter((m) => m !== metric) : [...prev, metric]
+    ));
+  }
+
+  function addDiagram() {
+    if (pendingMetrics.length === 0) return;
+    setDiagramConfigs((prev) => [
+      ...prev,
+      {
+        id: crypto.randomUUID(),
+        metrics: [...pendingMetrics],
+        style: pendingStyle,
+      },
+    ]);
+    setPendingMetrics([]);
+    setPendingStyle('bar');
+    setShowDiagramPicker(false);
+  }
+
+  function removeDiagram(id: string) {
+    setDiagramConfigs((prev) => prev.filter((diagram) => diagram.id !== id));
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -270,40 +345,124 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
             )}
           </div>
 
-          <Card title="Weight Progress">
-            <WeightChart data={weightData} />
+          <Card title="Diagrams">
+            <div className="flex flex-col gap-4">
+              {diagramConfigs.map((diagram) => (
+                <div key={diagram.id} className="border border-gray-100 rounded-xl p-4">
+                  <div className="flex items-center justify-between gap-3 mb-3">
+                    <div className="flex flex-wrap gap-2">
+                      {diagram.metrics.map((metric) => (
+                        <span
+                          key={metric}
+                          className="px-2.5 py-1 text-xs rounded-full border border-gray-200 text-gray-700 bg-gray-50"
+                        >
+                          {DIAGRAM_METRIC_META[metric].label}
+                        </span>
+                      ))}
+                      <span className="px-2.5 py-1 text-xs rounded-full border border-gray-200 text-gray-500 bg-white">
+                        {diagram.style.charAt(0).toUpperCase() + diagram.style.slice(1)}
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => removeDiagram(diagram.id)}
+                      className="p-1.5 rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                      aria-label="Remove diagram"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <CustomDiagramChart data={diagramData} metrics={diagram.metrics} style={diagram.style} />
+                </div>
+              ))}
+
+              <button
+                onClick={() => setShowDiagramPicker(true)}
+                className="w-full h-24 rounded-full border-2 border-dashed border-gray-300 bg-gray-100/90 hover:bg-gray-100 transition-colors flex items-center justify-center text-gray-500"
+              >
+                <Plus className="w-7 h-7" />
+              </button>
+            </div>
           </Card>
 
-          <Card title="Daily Calories">
-            <CalorieChart data={macroData} />
-          </Card>
-
-          <Card
-            title="Daily Macros"
-            action={
-              <div className="flex gap-2">
-                {(['protein', 'carbs', 'fats'] as const).map((macro) => (
+          {showDiagramPicker && (
+            <div
+              className="fixed inset-0 z-50 bg-black/30 flex items-center justify-center p-4"
+              role="dialog"
+              aria-modal="true"
+            >
+              <div className="w-full max-w-lg bg-white rounded-xl shadow-xl border border-gray-100 p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900">Add Diagram</h3>
                   <button
-                    key={macro}
-                    onClick={() => toggleMacro(macro)}
-                    className={`px-3 py-1 text-xs rounded-full font-medium border transition-colors
-                      ${visibleMacros[macro]
-                        ? macro === 'protein'
-                          ? 'bg-blue-500 text-white border-blue-500'
-                          : macro === 'carbs'
-                            ? 'bg-yellow-400 text-white border-yellow-400'
-                            : 'bg-red-500 text-white border-red-500'
-                        : 'bg-white text-gray-400 border-gray-200 hover:border-gray-400'
-                      }`}
+                    onClick={() => {
+                      setShowDiagramPicker(false);
+                      setPendingMetrics([]);
+                      setPendingStyle('bar');
+                    }}
+                    className="p-1 rounded text-gray-400 hover:bg-gray-100"
+                    aria-label="Close diagram picker"
                   >
-                    {macro.charAt(0).toUpperCase() + macro.slice(1)}
+                    <X className="w-4 h-4" />
                   </button>
-                ))}
+                </div>
+
+                <div className="mb-4">
+                  <p className="text-sm font-medium text-gray-700 mb-2">Metrics</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {DIAGRAM_METRICS.map((metric) => (
+                      <button
+                        key={metric}
+                        onClick={() => togglePendingMetric(metric)}
+                        className={`px-3 py-2 text-sm rounded-lg border transition-colors text-left
+                          ${pendingMetrics.includes(metric)
+                            ? 'bg-green-600 text-white border-green-600'
+                            : 'bg-white text-gray-700 border-gray-200 hover:border-green-400'
+                          }`}
+                      >
+                        {DIAGRAM_METRIC_META[metric].label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="mb-5">
+                  <label htmlFor="diagram-style" className="text-sm font-medium text-gray-700 mb-2 block">
+                    Diagram style
+                  </label>
+                  <select
+                    id="diagram-style"
+                    value={pendingStyle}
+                    onChange={(e) => setPendingStyle(e.target.value as DiagramStyle)}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                  >
+                    <option value="bar">Bar</option>
+                    <option value="line">Line</option>
+                    <option value="area">Area</option>
+                  </select>
+                </div>
+
+                <div className="flex justify-end gap-2">
+                  <button
+                    onClick={() => {
+                      setShowDiagramPicker(false);
+                      setPendingMetrics([]);
+                      setPendingStyle('bar');
+                    }}
+                    className="px-4 py-2 text-sm rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={addDiagram}
+                    disabled={pendingMetrics.length === 0}
+                    className="px-4 py-2 text-sm rounded-lg border border-green-600 bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Add Diagram
+                  </button>
+                </div>
               </div>
-            }
-          >
-            <MacroChart data={macroData} visibleMacros={visibleMacros} />
-          </Card>
+            </div>
+          )}
         </>
       )}
     </div>
