@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
-import { Calendar, BookOpen, User, Apple, LogOut, Menu, X, Users, Dumbbell, ArrowRightLeft } from 'lucide-react';
+import { Calendar, BookOpen, User, Apple, LogOut, Menu, X, Users, Dumbbell } from 'lucide-react';
 import { useState } from 'react';
 import { format } from 'date-fns';
 
@@ -12,7 +12,6 @@ const navItems = [
   { href: '/dashboard', label: 'Calendar', icon: Calendar },
   { href: `/log/${format(new Date(), 'yyyy-MM-dd')}`, label: 'Today', icon: BookOpen },
   { href: '/foods', label: 'My Foods', icon: Apple },
-  { href: '/gym', label: 'GymTracker', icon: Dumbbell },
   { href: '/friends', label: 'Friends', icon: Users },
   { href: '/profile', label: 'Profile', icon: User },
 ];
@@ -26,7 +25,6 @@ export default function Navigation() {
   const mobileActiveClasses = isGymMode ? 'text-red-600' : 'text-green-600';
   const iconBg = isGymMode ? 'bg-red-600' : 'bg-green-600';
   const BrandIcon = isGymMode ? Dumbbell : Apple;
-  const worldLabel = isGymMode ? 'Gym World' : 'Diet World';
 
   async function handleSignOut() {
     const supabase = createClient();
@@ -51,12 +49,22 @@ export default function Navigation() {
           <button
             onClick={toggleWorld}
             title={`Switch to ${isGymMode ? 'diet' : 'gym'} world`}
-            className={`ml-auto inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium border transition-colors ${
-              isGymMode ? 'border-red-200 text-red-700 hover:bg-red-50' : 'border-green-200 text-green-700 hover:bg-green-50'
+            aria-label={`Switch to ${isGymMode ? 'diet' : 'gym'} world`}
+            role="switch"
+            aria-checked={isGymMode}
+            className={`ml-auto relative inline-flex h-8 w-24 items-center rounded-full p-1 transition-colors ${
+              isGymMode ? 'bg-red-100' : 'bg-green-100'
             }`}
           >
-            <ArrowRightLeft className="w-3 h-3" />
-            {worldLabel}
+            <span
+              className={`absolute left-1 top-1 h-6 w-10 rounded-full bg-white shadow-sm transition-transform duration-200 ease-out ${
+                isGymMode ? 'translate-x-11' : ''
+              }`}
+            />
+            <span className="relative z-10 flex w-full text-[10px] font-semibold uppercase tracking-wide">
+              <span className={`flex-1 text-center ${isGymMode ? 'text-red-500' : 'text-green-700'}`}>Diet</span>
+              <span className={`flex-1 text-center ${isGymMode ? 'text-red-700' : 'text-green-500'}`}>Gym</span>
+            </span>
           </button>
         </div>
 
@@ -98,11 +106,22 @@ export default function Navigation() {
           <button
             onClick={toggleWorld}
             title={`Switch to ${isGymMode ? 'diet' : 'gym'} world`}
-            className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium border transition-colors ${
-              isGymMode ? 'border-red-200 text-red-700 hover:bg-red-50' : 'border-green-200 text-green-700 hover:bg-green-50'
+            aria-label={`Switch to ${isGymMode ? 'diet' : 'gym'} world`}
+            role="switch"
+            aria-checked={isGymMode}
+            className={`relative inline-flex h-7 w-20 items-center rounded-full p-1 transition-colors ${
+              isGymMode ? 'bg-red-100' : 'bg-green-100'
             }`}
           >
-            <ArrowRightLeft className="w-3 h-3" />
+            <span
+              className={`absolute left-1 top-1 h-5 w-8 rounded-full bg-white shadow-sm transition-transform duration-200 ease-out ${
+                isGymMode ? 'translate-x-10' : ''
+              }`}
+            />
+            <span className="relative z-10 flex w-full text-[9px] font-semibold uppercase tracking-wide">
+              <span className={`flex-1 text-center ${isGymMode ? 'text-red-500' : 'text-green-700'}`}>Diet</span>
+              <span className={`flex-1 text-center ${isGymMode ? 'text-red-700' : 'text-green-500'}`}>Gym</span>
+            </span>
           </button>
           <button
             onClick={() => setMobileOpen(!mobileOpen)}
