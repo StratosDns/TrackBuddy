@@ -50,6 +50,8 @@ export default function Navigation() {
             onClick={toggleWorld}
             title={`Switch to ${isGymMode ? 'diet' : 'gym'} world`}
             aria-label={`Switch to ${isGymMode ? 'diet' : 'gym'} world`}
+            role="switch"
+            aria-checked={isGymMode}
             className={`ml-auto relative inline-flex h-8 w-24 items-center rounded-full p-1 transition-colors ${
               isGymMode ? 'bg-red-100' : 'bg-green-100'
             }`}
@@ -105,6 +107,8 @@ export default function Navigation() {
             onClick={toggleWorld}
             title={`Switch to ${isGymMode ? 'diet' : 'gym'} world`}
             aria-label={`Switch to ${isGymMode ? 'diet' : 'gym'} world`}
+            role="switch"
+            aria-checked={isGymMode}
             className={`relative inline-flex h-7 w-20 items-center rounded-full p-1 transition-colors ${
               isGymMode ? 'bg-red-100' : 'bg-green-100'
             }`}
@@ -115,8 +119,8 @@ export default function Navigation() {
               }`}
             />
             <span className="relative z-10 flex w-full text-[9px] font-semibold uppercase tracking-wide">
-              <span className={`flex-1 text-center ${isGymMode ? 'text-red-500' : 'text-green-700'}`}>D</span>
-              <span className={`flex-1 text-center ${isGymMode ? 'text-red-700' : 'text-green-500'}`}>G</span>
+              <span className={`flex-1 text-center ${isGymMode ? 'text-red-500' : 'text-green-700'}`}>Diet</span>
+              <span className={`flex-1 text-center ${isGymMode ? 'text-red-700' : 'text-green-500'}`}>Gym</span>
             </span>
           </button>
           <button
