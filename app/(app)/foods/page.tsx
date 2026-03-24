@@ -289,7 +289,7 @@ export default function FoodsPage() {
       created_from_ingredients: useIngredientBuilder,
       ingredient_rows: persistedIngredientRows,
       input_basis: inputBasis,
-      piece_weight_g: pieceWeightToPersist != null
+      piece_weight_g: pieceWeightToPersist !== null
         ? roundToOneDecimalPlace(pieceWeightToPersist)
         : null,
     };
