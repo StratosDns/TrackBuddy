@@ -26,6 +26,12 @@ type ActiveTab = 'my-foods' | 'public-foods';
 type InputBasis = 'per_100g' | 'per_100ml' | 'per_piece';
 type IngredientRow = { foodId: string; amountG: string };
 type PersistedIngredientRow = { food_id: string; amount_g: number };
+type CopyFoodPayload = FormData & {
+  created_from_ingredients: boolean;
+  ingredient_rows: PersistedIngredientRow[] | null;
+  input_basis: InputBasis;
+  piece_weight_g: number | null;
+};
 
 const BASIS_LABELS: Record<InputBasis, string> = {
   per_100g: '100g',
@@ -49,6 +55,18 @@ function FoodCard({
   showActions?: boolean;
 }) {
   const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const parsedPieceWeight = food.piece_weight_g;
+  const hasPieceWeight = food.input_basis === 'per_piece' && !!parsedPieceWeight && parsedPieceWeight > 0;
+  const displayLabel = hasPieceWeight
+    ? BASIS_LABELS.per_piece
+    : food.input_basis === 'per_100ml'
+      ? BASIS_LABELS.per_100ml
+      : BASIS_LABELS.per_100g;
+  const displayFactor = hasPieceWeight ? parsedPieceWeight / 100 : 1;
+  const displayCalories = roundToOneDecimalPlace(food.calories_per_100g * displayFactor);
+  const displayProtein = roundToOneDecimalPlace(food.protein_per_100g * displayFactor);
+  const displayCarbs = roundToOneDecimalPlace(food.carbs_per_100g * displayFactor);
+  const displayFats = roundToOneDecimalPlace(food.fats_per_100g * displayFactor);
   return (
     <div className="bg-white rounded-xl border border-gray-100 p-4 flex flex-col gap-3 hover:shadow-sm transition-shadow">
       <div className="flex items-start justify-between gap-2">
@@ -94,22 +112,22 @@ function FoodCard({
           </div>
         )}
       </div>
-      <p className="text-xs font-medium text-gray-400">Per 100g:</p>
+      <p className="text-xs font-medium text-gray-400">Per {displayLabel}:</p>
       <div className="grid grid-cols-2 gap-2 text-xs">
         <div className="bg-orange-50 rounded-lg p-2 text-center">
-          <p className="font-bold text-orange-600">{food.calories_per_100g}</p>
+          <p className="font-bold text-orange-600">{displayCalories}</p>
           <p className="text-gray-400">kcal</p>
         </div>
         <div className="bg-blue-50 rounded-lg p-2 text-center">
-          <p className="font-bold text-blue-600">{food.protein_per_100g}g</p>
+          <p className="font-bold text-blue-600">{displayProtein}g</p>
           <p className="text-gray-400">protein</p>
         </div>
         <div className="bg-yellow-50 rounded-lg p-2 text-center">
-          <p className="font-bold text-yellow-600">{food.carbs_per_100g}g</p>
+          <p className="font-bold text-yellow-600">{displayCarbs}g</p>
           <p className="text-gray-400">carbs</p>
         </div>
         <div className="bg-red-50 rounded-lg p-2 text-center">
-          <p className="font-bold text-red-600">{food.fats_per_100g}g</p>
+          <p className="font-bold text-red-600">{displayFats}g</p>
           <p className="text-gray-400">fats</p>
         </div>
       </div>
@@ -130,6 +148,7 @@ export default function FoodsPage() {
   const [pieceWeightG, setPieceWeightG] = useState('');
   const [useIngredientBuilder, setUseIngredientBuilder] = useState(false);
   const [ingredientRows, setIngredientRows] = useState<IngredientRow[]>([{ foodId: '', amountG: '' }]);
+  const [ingredientPublicFoods, setIngredientPublicFoods] = useState<Food[]>([]);
   const [copyingFood, setCopyingFood] = useState<Food | null>(null);
 
   const {
@@ -147,11 +166,16 @@ export default function FoodsPage() {
   const isPublicValue = watch('is_public');
 
   const selectedBasisLabel = BASIS_LABELS[inputBasis];
+  const ingredientOptions = useMemo(() => {
+    const deduped = new Map<string, Food>();
+    [...ingredientPublicFoods, ...foods].forEach((food) => deduped.set(food.id, food));
+    return Array.from(deduped.values());
+  }, [foods, ingredientPublicFoods]);
 
   const ingredientRecipe = useMemo(() => {
     const selectedRows = ingredientRows
       .map((row) => {
-        const ingredient = foods.find((food) => food.id === row.foodId);
+        const ingredient = ingredientOptions.find((food) => food.id === row.foodId);
         const amountG = parseFloat(row.amountG);
         if (!ingredient || Number.isNaN(amountG) || amountG <= 0) return null;
         return { ingredient, amountG };
@@ -185,7 +209,7 @@ export default function FoodsPage() {
       per100,
       totalWeightG: roundToOneDecimalPlace(totals.weightG),
     };
-  }, [foods, ingredientRows]);
+  }, [ingredientOptions, ingredientRows]);
 
   async function loadFoods() {
     const supabase = createClient();
@@ -224,11 +248,32 @@ export default function FoodsPage() {
     setPublicLoading(false);
   }
 
+  async function loadIngredientPublicFoods() {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    const { data, error } = await supabase
+      .from('foods')
+      .select('*')
+      .eq('is_public', true)
+      .order('name')
+      .limit(200);
+    if (error) {
+      setIngredientPublicFoods([]);
+      return;
+    }
+    setIngredientPublicFoods(data || []);
+  }
+
   useEffect(() => {
     if (activeTab === 'public-foods') {
       searchPublicFoods(publicSearch);
     }
   }, [activeTab, publicSearch]);
+
+  useEffect(() => {
+    loadIngredientPublicFoods().catch(() => setIngredientPublicFoods([]));
+  }, []);
 
   async function onSubmit(data: FormData) {
     const supabase = createClient();
@@ -360,7 +405,7 @@ export default function FoodsPage() {
     setCopyingFood(food);
   }
 
-  async function saveCopiedFood(data: FormData) {
+  async function saveCopiedFood(data: CopyFoodPayload) {
     if (!copyingFood) return;
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
@@ -374,17 +419,21 @@ export default function FoodsPage() {
       carbs_per_100g: data.carbs_per_100g,
       fats_per_100g: data.fats_per_100g,
       is_public: false,
-      created_from_ingredients: false,
-      ingredient_rows: null,
-      input_basis: copyingFood.input_basis,
-      piece_weight_g: copyingFood.piece_weight_g,
-    });
+      created_from_ingredients: data.created_from_ingredients,
+      ingredient_rows: data.ingredient_rows,
+      input_basis: data.input_basis,
+      piece_weight_g: data.piece_weight_g,
+    })
+      .select('*')
+      .single();
     if (error) {
       alert(error.message);
       return;
     }
     setCopyingFood(null);
+    setActiveTab('my-foods');
     await loadFoods();
+    await loadIngredientPublicFoods();
   }
 
   return (
@@ -506,7 +555,7 @@ export default function FoodsPage() {
                             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none focus:border-green-500 focus:ring-2 focus:ring-green-200"
                           >
                             <option value="">-- Choose a food --</option>
-                            {foods.map((food) => (
+                            {ingredientOptions.map((food) => (
                               <option key={food.id} value={food.id}>
                                 {food.name}
                               </option>
@@ -723,6 +772,7 @@ export default function FoodsPage() {
       {copyingFood && (
         <CopyFoodModal
           food={copyingFood}
+          ingredientOptions={ingredientOptions}
           onSave={saveCopiedFood}
           onCancel={() => setCopyingFood(null)}
         />
@@ -735,11 +785,22 @@ export default function FoodsPage() {
 
 interface CopyFoodModalProps {
   food: Food;
-  onSave: (data: FormData) => Promise<void>;
+  ingredientOptions: Food[];
+  onSave: (data: CopyFoodPayload) => Promise<void>;
   onCancel: () => void;
 }
 
-function CopyFoodModal({ food, onSave, onCancel }: CopyFoodModalProps) {
+function CopyFoodModal({ food, ingredientOptions, onSave, onCancel }: CopyFoodModalProps) {
+  const [inputBasis, setInputBasis] = useState<InputBasis>(food.input_basis);
+  const [pieceWeightG, setPieceWeightG] = useState(food.piece_weight_g ? String(food.piece_weight_g) : '');
+  const [useIngredientBuilder, setUseIngredientBuilder] = useState(Boolean(food.created_from_ingredients));
+  const [ingredientRows, setIngredientRows] = useState<IngredientRow[]>(() => {
+    const restoredRows = (food.ingredient_rows ?? []).map((row) => ({
+      foodId: row.food_id,
+      amountG: String(row.amount_g),
+    }));
+    return restoredRows.length > 0 ? restoredRows : [{ foodId: '', amountG: '' }];
+  });
   const {
     register,
     handleSubmit,
@@ -755,6 +816,106 @@ function CopyFoodModal({ food, onSave, onCancel }: CopyFoodModalProps) {
       is_public: false,
     },
   });
+  const selectedBasisLabel = BASIS_LABELS[inputBasis];
+
+  const ingredientRecipe = useMemo(() => {
+    const selectedRows = ingredientRows
+      .map((row) => {
+        const ingredient = ingredientOptions.find((foodOption) => foodOption.id === row.foodId);
+        const amountG = parseFloat(row.amountG);
+        if (!ingredient || Number.isNaN(amountG) || amountG <= 0) return null;
+        return { ingredient, amountG };
+      })
+      .filter((row): row is { ingredient: Food; amountG: number } => row !== null);
+
+    const totals = selectedRows.reduce(
+      (acc, row) => {
+        const factor = row.amountG / 100;
+        acc.weightG += row.amountG;
+        acc.calories += row.ingredient.calories_per_100g * factor;
+        acc.protein += row.ingredient.protein_per_100g * factor;
+        acc.carbs += row.ingredient.carbs_per_100g * factor;
+        acc.fats += row.ingredient.fats_per_100g * factor;
+        return acc;
+      },
+      { weightG: 0, calories: 0, protein: 0, carbs: 0, fats: 0 }
+    );
+
+    if (totals.weightG <= 0) return null;
+
+    const per100Factor = 100 / totals.weightG;
+    return {
+      per100: {
+        calories: roundToOneDecimalPlace(totals.calories * per100Factor),
+        protein: roundToOneDecimalPlace(totals.protein * per100Factor),
+        carbs: roundToOneDecimalPlace(totals.carbs * per100Factor),
+        fats: roundToOneDecimalPlace(totals.fats * per100Factor),
+      },
+      totalWeightG: roundToOneDecimalPlace(totals.weightG),
+    };
+  }, [ingredientOptions, ingredientRows]);
+
+  async function handleCopySubmit(data: FormData) {
+    const parsedPieceWeight = parseFloat(pieceWeightG);
+    let calories = data.calories_per_100g;
+    let protein = data.protein_per_100g;
+    let carbs = data.carbs_per_100g;
+    let fats = data.fats_per_100g;
+
+    if (useIngredientBuilder) {
+      if (!ingredientRecipe) {
+        alert('Please select at least one ingredient and enter a valid amount greater than 0g.');
+        return;
+      }
+      calories = ingredientRecipe.per100.calories;
+      protein = ingredientRecipe.per100.protein;
+      carbs = ingredientRecipe.per100.carbs;
+      fats = ingredientRecipe.per100.fats;
+    } else if (inputBasis === 'per_piece') {
+      if (Number.isNaN(parsedPieceWeight) || parsedPieceWeight <= 0) {
+        alert('Please enter a piece weight greater than 0 grams.');
+        return;
+      }
+      const normalizeFactor = 100 / parsedPieceWeight;
+      calories = roundToOneDecimalPlace(calories * normalizeFactor);
+      protein = roundToOneDecimalPlace(protein * normalizeFactor);
+      carbs = roundToOneDecimalPlace(carbs * normalizeFactor);
+      fats = roundToOneDecimalPlace(fats * normalizeFactor);
+    }
+
+    const persistedIngredientRows = useIngredientBuilder
+      ? ingredientRows
+          .map((row) => {
+            const amountG = parseFloat(row.amountG);
+            if (!row.foodId || Number.isNaN(amountG) || amountG <= 0) return null;
+            return { food_id: row.foodId, amount_g: roundToOneDecimalPlace(amountG) };
+          })
+          .filter((row): row is PersistedIngredientRow => row !== null)
+      : null;
+
+    const pieceWeightToPersist =
+      inputBasis === 'per_piece'
+        ? useIngredientBuilder
+          ? ingredientRecipe?.totalWeightG ?? null
+          : !Number.isNaN(parsedPieceWeight) && parsedPieceWeight > 0
+            ? parsedPieceWeight
+            : null
+        : null;
+
+    await onSave({
+      ...data,
+      calories_per_100g: calories,
+      protein_per_100g: protein,
+      carbs_per_100g: carbs,
+      fats_per_100g: fats,
+      created_from_ingredients: useIngredientBuilder,
+      ingredient_rows: persistedIngredientRows,
+      input_basis: inputBasis,
+      piece_weight_g: pieceWeightToPersist !== null
+        ? roundToOneDecimalPlace(pieceWeightToPersist)
+        : null,
+    });
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -771,45 +932,167 @@ function CopyFoodModal({ food, onSave, onCancel }: CopyFoodModalProps) {
         <p className="text-sm text-gray-500">
           Customize this food before saving it to your collection. Changes only affect your account.
         </p>
-        <form onSubmit={handleSubmit(onSave)} className="flex flex-col gap-4">
+        <form onSubmit={handleSubmit(handleCopySubmit)} className="flex flex-col gap-4">
           <Input
             label="Food name"
             placeholder="e.g. Chicken Breast"
             error={errors.name?.message}
             {...register('name')}
           />
+          <div>
+            <p className="text-sm font-medium text-gray-700 mb-2">Macros are entered per:</p>
+            <div className="flex flex-wrap gap-2">
+              {(['per_100g', 'per_100ml', 'per_piece'] as InputBasis[]).map((basis) => (
+                <button
+                  key={basis}
+                  type="button"
+                  onClick={() => setInputBasis(basis)}
+                  className={`px-3 py-1.5 rounded-lg border text-sm transition-colors ${
+                    inputBasis === basis
+                      ? 'bg-green-50 border-green-300 text-green-700'
+                      : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
+                  }`}
+                >
+                  {BASIS_LABELS[basis]}
+                </button>
+              ))}
+            </div>
+          </div>
+          {!useIngredientBuilder && inputBasis === 'per_piece' && (
+            <Input
+              label="Weight of 1 piece (g)"
+              type="number"
+              step="0.1"
+              min="0.1"
+              placeholder="e.g. 250"
+              value={pieceWeightG}
+              onChange={(e) => setPieceWeightG(e.target.value)}
+            />
+          )}
+          <div>
+            <button
+              type="button"
+              onClick={() => setUseIngredientBuilder((prev) => !prev)}
+              className="text-sm font-medium text-green-700 hover:text-green-800"
+            >
+              {useIngredientBuilder ? 'Use manual macros instead' : 'Build this meal from existing ingredients'}
+            </button>
+          </div>
+          {useIngredientBuilder && (
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 flex flex-col gap-3">
+              {ingredientRows.map((row, index) => (
+                <div key={index} className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-end">
+                  <div className="sm:col-span-7">
+                    <label className="text-xs text-gray-600 mb-1 block">Ingredient</label>
+                    <select
+                      value={row.foodId}
+                      onChange={(e) =>
+                        setIngredientRows((prev) =>
+                          prev.map((r, i) => (i === index ? { ...r, foodId: e.target.value } : r))
+                        )
+                      }
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none focus:border-green-500 focus:ring-2 focus:ring-green-200"
+                    >
+                      <option value="">-- Choose a food --</option>
+                      {ingredientOptions.map((foodOption) => (
+                        <option key={foodOption.id} value={foodOption.id}>
+                          {foodOption.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="sm:col-span-3">
+                    <label className="text-xs text-gray-600 mb-1 block">Amount (g)</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0.1"
+                      value={row.amountG}
+                      onChange={(e) =>
+                        setIngredientRows((prev) =>
+                          prev.map((r, i) => (i === index ? { ...r, amountG: e.target.value } : r))
+                        )
+                      }
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none focus:border-green-500 focus:ring-2 focus:ring-green-200"
+                      placeholder="e.g. 120"
+                    />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <button
+                      type="button"
+                      disabled={ingredientRows.length <= 1}
+                      onClick={() => setIngredientRows((prev) => prev.filter((_, i) => i !== index))}
+                      className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-600 disabled:opacity-50"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              ))}
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => setIngredientRows((prev) => [...prev, { foodId: '', amountG: '' }])}
+                  className="text-sm text-green-700 hover:text-green-800 font-medium"
+                >
+                  + Add ingredient
+                </button>
+                {ingredientRecipe && (
+                  <p className="text-xs text-gray-500">
+                    Total recipe weight: {ingredientRecipe.totalWeightG}g
+                  </p>
+                )}
+              </div>
+              {ingredientRecipe && inputBasis === 'per_piece' && (
+                <p className="text-xs text-gray-500">
+                  For this food, 1 piece = whole recipe ({ingredientRecipe.totalWeightG}g).
+                </p>
+              )}
+              {ingredientRecipe && (
+                <p className="text-xs text-gray-600 bg-white border border-gray-200 rounded-lg px-3 py-2">
+                  Generated macros per {BASIS_LABELS.per_100g}: {ingredientRecipe.per100.calories} kcal,{' '}
+                  {ingredientRecipe.per100.protein}g protein, {ingredientRecipe.per100.carbs}g carbs,{' '}
+                  {ingredientRecipe.per100.fats}g fats
+                </p>
+              )}
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <Input
-              label="Calories (per 100g)"
+              label={`Calories (per ${selectedBasisLabel})`}
               type="number"
               step="0.1"
               min="0"
               error={errors.calories_per_100g?.message}
               {...register('calories_per_100g')}
+              disabled={useIngredientBuilder}
             />
             <Input
-              label="Protein (g per 100g)"
+              label={`Protein (g per ${selectedBasisLabel})`}
               type="number"
               step="0.1"
               min="0"
               error={errors.protein_per_100g?.message}
               {...register('protein_per_100g')}
+              disabled={useIngredientBuilder}
             />
             <Input
-              label="Carbs (g per 100g)"
+              label={`Carbs (g per ${selectedBasisLabel})`}
               type="number"
               step="0.1"
               min="0"
               error={errors.carbs_per_100g?.message}
               {...register('carbs_per_100g')}
+              disabled={useIngredientBuilder}
             />
             <Input
-              label="Fats (g per 100g)"
+              label={`Fats (g per ${selectedBasisLabel})`}
               type="number"
               step="0.1"
               min="0"
               error={errors.fats_per_100g?.message}
               {...register('fats_per_100g')}
+              disabled={useIngredientBuilder}
             />
           </div>
           <div className="flex gap-3 justify-end">
