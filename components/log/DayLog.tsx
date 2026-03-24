@@ -225,6 +225,17 @@ function MealSection({ meal, logs, macros, foods, date, onDelete, onAdded, addin
         : parsedAmount;
   const preview = selectedFood && amountInGrams ? calcMacros(selectedFood, amountInGrams) : null;
 
+  const formatLoggedQuantity = (food: Food | undefined, amountG: number) => {
+    const parsedPieceWeightG = food?.piece_weight_g != null
+      ? Number(food.piece_weight_g)
+      : null;
+    const canShowPieces = food?.input_basis === 'per_piece' && !!parsedPieceWeightG && parsedPieceWeightG > 0;
+    const amount = canShowPieces ? amountG / parsedPieceWeightG : amountG;
+    const rounded = Math.round(amount * 10) / 10;
+    const formatted = Number.isInteger(rounded) ? rounded.toFixed(0) : rounded.toString();
+    return canShowPieces ? formatted : `${formatted}g`;
+  };
+
   useEffect(() => {
     if (foodSearchTab !== 'explore') return;
     let cancelled = false;
@@ -475,8 +486,12 @@ function MealSection({ meal, logs, macros, foods, date, onDelete, onAdded, addin
               >
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-800 truncate">{log.food?.name}</p>
-                    <p className="text-xs text-gray-400">{log.amount_g}g</p>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="inline-flex items-center justify-center h-5 min-w-5 px-1.5 rounded-full bg-gray-200 text-[10px] font-semibold text-gray-600 shrink-0">
+                        {formatLoggedQuantity(log.food, log.amount_g)}
+                      </span>
+                      <p className="text-sm font-medium text-gray-800 truncate">{log.food?.name}</p>
+                    </div>
                   </div>
                   {macros && <MacroBadge {...macros} compact />}
                   <button
