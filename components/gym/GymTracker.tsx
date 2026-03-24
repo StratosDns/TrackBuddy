@@ -188,7 +188,7 @@ export default function GymTracker() {
   );
 
   return (
-    <Card title="My Exercises">
+    <Card>
         <div className="flex flex-col gap-4">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div className="rounded-xl bg-red-50 border border-red-100 p-3">
