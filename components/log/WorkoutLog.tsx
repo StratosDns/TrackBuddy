@@ -19,6 +19,7 @@ interface ExerciseWeightRule {
 const DEFAULT_WEIGHT_RULE: ExerciseWeightRule = { increment: 2.5 };
 const DEFAULT_REP_OPTIONS = [5, 8, 10, 12, 15];
 const WEIGHT_SUGGESTION_COUNT = 80;
+const MAX_INLINE_REP_SUGGESTIONS = 7;
 
 const MUSCLE_GROUP_WEIGHT_RULES: Record<string, ExerciseWeightRule> = {
   chest: { increment: 2.5 },
@@ -168,6 +169,11 @@ export default function WorkoutLog({ date }: WorkoutLogProps) {
       .filter((reps) => Number.isFinite(reps) && reps > 0)
       .sort((a, b) => a - b);
   }, [workoutLogs, selectedExerciseId]);
+  const repsSuggestionSummary = useMemo(() => {
+    const shown = repsOptions.slice(0, MAX_INLINE_REP_SUGGESTIONS);
+    if (shown.length === repsOptions.length) return shown.join(', ');
+    return `${shown.join(', ')}, ...`;
+  }, [repsOptions]);
   const weightOptions = useMemo(() => {
     return Array.from({ length: WEIGHT_SUGGESTION_COUNT }, (_, index) =>
       Number(((index + 1) * selectedExerciseWeightRule.increment).toFixed(2))
@@ -358,7 +364,7 @@ export default function WorkoutLog({ date }: WorkoutLogProps) {
           </select>
           {selectedExercise && (
             <p className="text-xs text-gray-500">
-              Suggestions: reps {repsOptions.join(', ')} • weight +{formatWeight(selectedExerciseWeightRule.increment)}kg steps
+              Suggestions: reps {repsSuggestionSummary} • weight +{formatWeight(selectedExerciseWeightRule.increment)}kg steps
             </p>
           )}
         </div>
