@@ -21,7 +21,7 @@ export default function Navigation() {
   const pathname = usePathname();
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const isGymMode = pathname.startsWith('/gym');
+  const isGymMode = pathname === '/gym' || pathname.startsWith('/gym/');
   const activeClasses = isGymMode ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700';
   const mobileActiveClasses = isGymMode ? 'text-red-600' : 'text-green-600';
   const iconBg = isGymMode ? 'bg-red-600' : 'bg-green-600';

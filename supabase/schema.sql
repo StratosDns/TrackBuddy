@@ -233,6 +233,7 @@ create table if not exists public.exercises (
   is_public boolean not null default false,
   is_preset boolean not null default false,
   created_at timestamptz default now() not null,
+  constraint exercises_preset_requires_public check (not is_preset or is_public),
   unique (user_id, name)
 );
 

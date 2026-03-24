@@ -16,6 +16,8 @@ import {
 type ExerciseScope = 'all' | 'mine' | 'public';
 type ChartType = 'line' | 'bar';
 type TimelineMetric = 'maxWeight' | 'totalVolume' | 'totalReps' | 'sets';
+const MIN_MOVING_AVERAGE_WINDOW = 2;
+const MAX_MOVING_AVERAGE_WINDOW = 10;
 
 const RANGE_PRESETS = [
   { label: '7 Days', days: 7 },
@@ -40,8 +42,8 @@ function parseSetRows(raw: unknown): WorkoutSetRow[] {
 }
 
 function timelineFormatter(metric: TimelineMetric, value: number): string {
-  if (metric === 'maxWeight') return `${value} kg`;
-  if (metric === 'totalVolume') return `${value} kg`;
+  if (metric === 'maxWeight') return `Max ${value} kg`;
+  if (metric === 'totalVolume') return `Volume ${value} kg`;
   if (metric === 'totalReps') return `${value} reps`;
   return `${value} sets`;
 }
@@ -582,7 +584,7 @@ export default function GymTracker() {
                   label="Start"
                   type="date"
                   value={customStart}
-                  max={customEnd || format(new Date(), 'yyyy-MM-dd')}
+                  max={customEnd || undefined}
                   onChange={(e) => setCustomStart(e.target.value)}
                 />
                 <Input
@@ -654,11 +656,20 @@ export default function GymTracker() {
               <label className="text-xs text-gray-500 font-medium">Average window (sessions)</label>
               <input
                 type="number"
-                min="2"
-                max="10"
+                min={MIN_MOVING_AVERAGE_WINDOW}
+                max={MAX_MOVING_AVERAGE_WINDOW}
                 step="1"
                 value={movingAverageWindow}
-                onChange={(e) => setMovingAverageWindow(Math.max(2, Math.min(10, Number(e.target.value) || 3)))}
+                onChange={(e) => {
+                  const parsed = Number(e.target.value);
+                  if (Number.isNaN(parsed)) {
+                    setMovingAverageWindow(MIN_MOVING_AVERAGE_WINDOW);
+                    return;
+                  }
+                  setMovingAverageWindow(
+                    Math.max(MIN_MOVING_AVERAGE_WINDOW, Math.min(MAX_MOVING_AVERAGE_WINDOW, parsed))
+                  );
+                }}
                 className="mt-1 w-full rounded-lg border px-3 py-2 text-sm text-gray-900 border-gray-300 focus:border-red-500 focus:ring-2 focus:ring-red-200 outline-none"
               />
             </div>
