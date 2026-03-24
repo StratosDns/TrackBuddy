@@ -12,6 +12,56 @@ interface WorkoutLogProps {
   date: string;
 }
 
+interface ExerciseWeightRule {
+  increment: number;
+  max: number;
+}
+
+const DEFAULT_WEIGHT_RULE: ExerciseWeightRule = { increment: 2.5, max: 120 };
+
+const MUSCLE_GROUP_WEIGHT_RULES: Record<string, ExerciseWeightRule> = {
+  chest: { increment: 2.5, max: 160 },
+  legs: { increment: 5, max: 320 },
+  back: { increment: 5, max: 220 },
+  shoulders: { increment: 2.5, max: 100 },
+  arms: { increment: 2.5, max: 70 },
+  glutes: { increment: 5, max: 260 },
+};
+
+const EXERCISE_WEIGHT_RULES: Record<string, ExerciseWeightRule> = {
+  'Bench Press': { increment: 5, max: 180 },
+  Squat: { increment: 5, max: 240 },
+  Deadlift: { increment: 5, max: 280 },
+  'Overhead Press': { increment: 2.5, max: 100 },
+  'Barbell Row': { increment: 5, max: 180 },
+  'Pull-Up': { increment: 2.5, max: 80 },
+  'Dumbbell Curl': { increment: 2.5, max: 40 },
+  'Triceps Pushdown': { increment: 5, max: 50 },
+  'Leg Press': { increment: 10, max: 400 },
+  'Hip Thrust': { increment: 10, max: 320 },
+};
+
+function getExerciseWeightRule(exercise?: Exercise): ExerciseWeightRule {
+  if (!exercise) return DEFAULT_WEIGHT_RULE;
+  const exactRule = EXERCISE_WEIGHT_RULES[exercise.name];
+  if (exactRule) return exactRule;
+  return MUSCLE_GROUP_WEIGHT_RULES[exercise.muscle_group.toLowerCase()] || DEFAULT_WEIGHT_RULE;
+}
+
+function normalizeWeight(weight: number, rule: ExerciseWeightRule): number {
+  const clamped = clampWeight(weight, rule);
+  const normalized = Math.round(clamped / rule.increment) * rule.increment;
+  return Number(normalized.toFixed(2));
+}
+
+function clampWeight(weight: number, rule: ExerciseWeightRule): number {
+  return Math.min(Math.max(weight, 0), rule.max);
+}
+
+function formatWeight(weight: number): string {
+  return weight.toFixed(2).replace(/\.?0+$/, '');
+}
+
 function parseSetRows(raw: unknown): WorkoutSetRow[] {
   if (!Array.isArray(raw)) return [];
   return raw
@@ -80,6 +130,21 @@ export default function WorkoutLog({ date }: WorkoutLogProps) {
       .filter((exercise) => !trimmed || exercise.name.toLowerCase().includes(trimmed));
   }, [allExercises, exerciseSearch, currentUserId]);
 
+  const selectedExercise = useMemo(
+    () => allExercises.find((exercise) => exercise.id === selectedExerciseId),
+    [allExercises, selectedExerciseId]
+  );
+  const selectedExerciseWeightRule = useMemo(
+    () => getExerciseWeightRule(selectedExercise),
+    [selectedExercise]
+  );
+  const weightOptions = useMemo(() => {
+    const count = Math.floor(selectedExerciseWeightRule.max / selectedExerciseWeightRule.increment);
+    return Array.from({ length: count }, (_, index) =>
+      Number(((index + 1) * selectedExerciseWeightRule.increment).toFixed(2))
+    );
+  }, [selectedExerciseWeightRule]);
+
   function addSetRow() {
     setSetRows((prev) => [...prev, { reps: '', weight_kg: '' }]);
   }
@@ -89,7 +154,18 @@ export default function WorkoutLog({ date }: WorkoutLogProps) {
   }
 
   function updateSetRow(index: number, field: 'reps' | 'weight_kg', value: string) {
-    setSetRows((prev) => prev.map((row, i) => (i === index ? { ...row, [field]: value } : row)));
+    setSetRows((prev) =>
+      prev.map((row, i) => {
+        if (i !== index) return row;
+        if (field !== 'weight_kg') return { ...row, [field]: value };
+        if (value === '') return { ...row, weight_kg: '' };
+
+        const numericValue = Number(value);
+        if (Number.isNaN(numericValue)) return { ...row, weight_kg: value };
+        const clamped = clampWeight(numericValue, selectedExerciseWeightRule);
+        return { ...row, weight_kg: formatWeight(clamped) };
+      })
+    );
   }
 
   async function saveWorkoutEntry() {
@@ -97,7 +173,11 @@ export default function WorkoutLog({ date }: WorkoutLogProps) {
     if (!selectedExerciseId) return;
     const parsedRows = setRows
       .map((row) => ({ reps: Number(row.reps), weight_kg: Number(row.weight_kg) }))
-      .filter((row) => !Number.isNaN(row.reps) && row.reps > 0 && !Number.isNaN(row.weight_kg) && row.weight_kg >= 0);
+      .filter((row) => !Number.isNaN(row.reps) && row.reps > 0 && !Number.isNaN(row.weight_kg) && row.weight_kg >= 0)
+      .map((row) => ({
+        reps: row.reps,
+        weight_kg: normalizeWeight(row.weight_kg, selectedExerciseWeightRule),
+      }));
     if (parsedRows.length === 0) return;
 
     setSavingSet(true);
@@ -186,6 +266,11 @@ export default function WorkoutLog({ date }: WorkoutLogProps) {
               </option>
             ))}
           </select>
+          {selectedExercise && (
+            <p className="text-xs text-gray-500">
+              Weight suggestions: +{formatWeight(selectedExerciseWeightRule.increment)}kg steps, max {formatWeight(selectedExerciseWeightRule.max)}kg
+            </p>
+          )}
         </div>
 
         <div className="rounded-xl border border-gray-200 p-4">
@@ -216,7 +301,9 @@ export default function WorkoutLog({ date }: WorkoutLogProps) {
                 <input
                   type="number"
                   min="0"
-                  step="0.5"
+                  max={selectedExerciseWeightRule.max}
+                  step={selectedExerciseWeightRule.increment}
+                  list="weight-suggestions-kg"
                   placeholder="Weight (kg)"
                   value={row.weight_kg}
                   onChange={(e) => updateSetRow(index, 'weight_kg', e.target.value)}
@@ -232,6 +319,11 @@ export default function WorkoutLog({ date }: WorkoutLogProps) {
               </div>
             ))}
           </div>
+          <datalist id="weight-suggestions-kg">
+            {weightOptions.map((weight) => (
+              <option key={weight} value={formatWeight(weight)} />
+            ))}
+          </datalist>
           <div className="mt-3">
             <Input
               label="Notes (optional)"
