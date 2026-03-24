@@ -11,7 +11,7 @@ import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import MacroBadge from '@/components/ui/MacroBadge';
 import Input from '@/components/ui/Input';
-import { Plus, Trash2, Scale, Droplets, Search, Globe } from 'lucide-react';
+import { Plus, Trash2, Scale, Droplets, Search, Globe, Pencil, Check, X } from 'lucide-react';
 
 interface Props {
   date: string;
@@ -170,6 +170,11 @@ export default function DayLog({ date }: Props) {
           foods={foods}
           date={date}
           onDelete={deleteLog}
+          onUpdate={async (id, amountG) => {
+            const supabase = createClient();
+            await supabase.from('food_logs').update({ amount_g: amountG }).eq('id', id);
+            setLogs((prev) => prev.map((log) => (log.id === id ? { ...log, amount_g: amountG } : log)));
+          }}
           onAdded={loadData}
           adding={addingMeal === meal}
           onToggleAdd={() => setAddingMeal(addingMeal === meal ? null : meal)}
@@ -188,6 +193,7 @@ interface MealSectionProps {
   foods: Food[];
   date: string;
   onDelete: (id: string) => void;
+  onUpdate: (id: string, amountG: number) => Promise<void>;
   onAdded: () => void;
   adding: boolean;
   onToggleAdd: () => void;
@@ -195,7 +201,7 @@ interface MealSectionProps {
 
 type FoodSearchTab = 'my-foods' | 'explore';
 
-function MealSection({ meal, logs, macros, foods, date, onDelete, onAdded, adding, onToggleAdd }: MealSectionProps) {
+function MealSection({ meal, logs, macros, foods, date, onDelete, onUpdate, onAdded, adding, onToggleAdd }: MealSectionProps) {
   const [foodSearchTab, setFoodSearchTab] = useState<FoodSearchTab>('my-foods');
   const [foodId, setFoodId] = useState('');
   const [amountInput, setAmountInput] = useState('');
@@ -205,6 +211,9 @@ function MealSection({ meal, logs, macros, foods, date, onDelete, onAdded, addin
   const [exploreFoods, setExploreFoods] = useState<Food[]>([]);
   const [exploreLoading, setExploreLoading] = useState(false);
   const [selectedExploreFood, setSelectedExploreFood] = useState<Food | null>(null);
+  const [editingLogId, setEditingLogId] = useState<string | null>(null);
+  const [editingAmountInput, setEditingAmountInput] = useState('');
+  const [editingAmountUnit, setEditingAmountUnit] = useState<'grams' | 'pieces'>('grams');
 
   const selectedFood = foodSearchTab === 'my-foods'
     ? foods.find((f) => f.id === foodId)
@@ -286,6 +295,37 @@ function MealSection({ meal, logs, macros, foods, date, onDelete, onAdded, addin
     setSaving(false);
     onAdded();
     onToggleAdd();
+  }
+
+  function beginEdit(log: LogEntry) {
+    const parsedPieceWeight = log.food?.piece_weight_g != null ? Number(log.food.piece_weight_g) : null;
+    const canUsePieces = log.food?.input_basis === 'per_piece' && !!parsedPieceWeight && parsedPieceWeight > 0;
+    const amountValue = canUsePieces ? log.amount_g / parsedPieceWeight : log.amount_g;
+    const rounded = Math.round(amountValue * 10) / 10;
+
+    setEditingLogId(log.id);
+    setEditingAmountUnit(canUsePieces ? 'pieces' : 'grams');
+    setEditingAmountInput(Number.isInteger(rounded) ? rounded.toFixed(0) : rounded.toString());
+  }
+
+  function cancelEdit() {
+    setEditingLogId(null);
+    setEditingAmountInput('');
+    setEditingAmountUnit('grams');
+  }
+
+  async function saveEdit(log: LogEntry) {
+    const parsedAmount = parseFloat(editingAmountInput);
+    if (Number.isNaN(parsedAmount) || parsedAmount <= 0) return;
+
+    const parsedPieceWeight = log.food?.piece_weight_g != null ? Number(log.food.piece_weight_g) : null;
+    const canUsePieces = log.food?.input_basis === 'per_piece' && !!parsedPieceWeight && parsedPieceWeight > 0;
+    const amountG = canUsePieces && editingAmountUnit === 'pieces'
+      ? parsedAmount * parsedPieceWeight
+      : parsedAmount;
+
+    await onUpdate(log.id, amountG);
+    cancelEdit();
   }
 
   return (
@@ -494,13 +534,80 @@ function MealSection({ meal, logs, macros, foods, date, onDelete, onAdded, addin
                     </div>
                   </div>
                   {macros && <MacroBadge {...macros} compact />}
-                  <button
-                    onClick={() => onDelete(log.id)}
-                    className="text-gray-400 hover:text-red-500 transition-colors p-1 shrink-0"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  <div className="flex items-center gap-1 shrink-0">
+                    {editingLogId === log.id ? (
+                      <>
+                        <button
+                          onClick={cancelEdit}
+                          className="text-gray-400 hover:text-gray-600 transition-colors p-1"
+                          title="Cancel edit"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => saveEdit(log)}
+                          className="text-gray-400 hover:text-green-600 transition-colors p-1"
+                          title="Save edit"
+                        >
+                          <Check className="w-4 h-4" />
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        onClick={() => beginEdit(log)}
+                        className="text-gray-400 hover:text-blue-500 transition-colors p-1"
+                        title="Edit amount"
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </button>
+                    )}
+                    <button
+                      onClick={() => onDelete(log.id)}
+                      className="text-gray-400 hover:text-red-500 transition-colors p-1"
+                      title="Delete entry"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
+                {editingLogId === log.id && (
+                  <div className="mt-2 flex flex-col gap-2">
+                    {log.food?.input_basis === 'per_piece' && log.food.piece_weight_g ? (
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setEditingAmountUnit('pieces')}
+                          className={`px-3 py-1 rounded-lg border text-xs transition-colors ${
+                            editingAmountUnit === 'pieces'
+                              ? 'bg-green-50 border-green-300 text-green-700'
+                              : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
+                          }`}
+                        >
+                          Pieces
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditingAmountUnit('grams')}
+                          className={`px-3 py-1 rounded-lg border text-xs transition-colors ${
+                            editingAmountUnit === 'grams'
+                              ? 'bg-green-50 border-green-300 text-green-700'
+                              : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
+                          }`}
+                        >
+                          Grams
+                        </button>
+                      </div>
+                    ) : null}
+                    <input
+                      type="number"
+                      min={editingAmountUnit === 'pieces' ? '0.1' : '1'}
+                      step={editingAmountUnit === 'pieces' ? '0.1' : '1'}
+                      value={editingAmountInput}
+                      onChange={(e) => setEditingAmountInput(e.target.value)}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none focus:border-green-500 focus:ring-2 focus:ring-green-200"
+                    />
+                  </div>
+                )}
                 {shouldShowIngredients && (
                   <div className="mt-2 ml-1 pl-3 border-l-2 border-gray-100 flex flex-col gap-1">
                     <p className="text-xs font-medium text-gray-500">Ingredients</p>
