@@ -14,31 +14,32 @@ interface WorkoutLogProps {
 
 interface ExerciseWeightRule {
   increment: number;
-  max: number;
 }
 
-const DEFAULT_WEIGHT_RULE: ExerciseWeightRule = { increment: 2.5, max: 120 };
+const DEFAULT_WEIGHT_RULE: ExerciseWeightRule = { increment: 2.5 };
+const DEFAULT_REP_OPTIONS = [5, 8, 10, 12, 15];
+const WEIGHT_SUGGESTION_COUNT = 80;
 
 const MUSCLE_GROUP_WEIGHT_RULES: Record<string, ExerciseWeightRule> = {
-  chest: { increment: 2.5, max: 160 },
-  legs: { increment: 5, max: 320 },
-  back: { increment: 5, max: 220 },
-  shoulders: { increment: 2.5, max: 100 },
-  arms: { increment: 2.5, max: 70 },
-  glutes: { increment: 5, max: 260 },
+  chest: { increment: 2.5 },
+  legs: { increment: 5 },
+  back: { increment: 5 },
+  shoulders: { increment: 2.5 },
+  arms: { increment: 2.5 },
+  glutes: { increment: 5 },
 };
 
 const EXERCISE_WEIGHT_RULES: Record<string, ExerciseWeightRule> = {
-  'Bench Press': { increment: 5, max: 180 },
-  Squat: { increment: 5, max: 240 },
-  Deadlift: { increment: 5, max: 280 },
-  'Overhead Press': { increment: 2.5, max: 100 },
-  'Barbell Row': { increment: 5, max: 180 },
-  'Pull-Up': { increment: 2.5, max: 80 },
-  'Dumbbell Curl': { increment: 2.5, max: 40 },
-  'Triceps Pushdown': { increment: 5, max: 50 },
-  'Leg Press': { increment: 10, max: 400 },
-  'Hip Thrust': { increment: 10, max: 320 },
+  'Bench Press': { increment: 5 },
+  Squat: { increment: 5 },
+  Deadlift: { increment: 5 },
+  'Overhead Press': { increment: 2.5 },
+  'Barbell Row': { increment: 5 },
+  'Pull-Up': { increment: 2.5 },
+  'Dumbbell Curl': { increment: 2.5 },
+  'Triceps Pushdown': { increment: 5 },
+  'Leg Press': { increment: 10 },
+  'Hip Thrust': { increment: 10 },
 };
 
 function getExerciseWeightRule(exercise?: Exercise): ExerciseWeightRule {
@@ -49,13 +50,13 @@ function getExerciseWeightRule(exercise?: Exercise): ExerciseWeightRule {
 }
 
 function normalizeWeight(weight: number, rule: ExerciseWeightRule): number {
-  const clamped = clampWeight(weight, rule);
+  const clamped = clampWeight(weight);
   const normalized = Math.round(clamped / rule.increment) * rule.increment;
   return Number(normalized.toFixed(2));
 }
 
-function clampWeight(weight: number, rule: ExerciseWeightRule): number {
-  return Math.min(Math.max(weight, 0), rule.max);
+function clampWeight(weight: number): number {
+  return Math.max(weight, 0);
 }
 
 function formatWeight(weight: number): string {
@@ -159,9 +160,16 @@ export default function WorkoutLog({ date }: WorkoutLogProps) {
     () => getExerciseWeightRule(selectedExercise),
     [selectedExercise]
   );
+  const repsOptions = useMemo(() => {
+    const historicalReps = workoutLogs
+      .filter((log) => !selectedExerciseId || log.exercise_id === selectedExerciseId)
+      .flatMap((log) => log.set_rows.map((setRow) => setRow.reps));
+    return Array.from(new Set([...DEFAULT_REP_OPTIONS, ...historicalReps]))
+      .filter((reps) => Number.isFinite(reps) && reps > 0)
+      .sort((a, b) => a - b);
+  }, [workoutLogs, selectedExerciseId]);
   const weightOptions = useMemo(() => {
-    const count = Math.floor(selectedExerciseWeightRule.max / selectedExerciseWeightRule.increment);
-    return Array.from({ length: count }, (_, index) =>
+    return Array.from({ length: WEIGHT_SUGGESTION_COUNT }, (_, index) =>
       Number(((index + 1) * selectedExerciseWeightRule.increment).toFixed(2))
     );
   }, [selectedExerciseWeightRule]);
@@ -183,7 +191,7 @@ export default function WorkoutLog({ date }: WorkoutLogProps) {
 
         const numericValue = Number(value);
         if (Number.isNaN(numericValue)) return { ...row, weight_kg: value };
-        const clamped = clampWeight(numericValue, selectedExerciseWeightRule);
+        const clamped = clampWeight(numericValue);
         return { ...row, weight_kg: formatWeight(clamped) };
       })
     );
@@ -350,7 +358,7 @@ export default function WorkoutLog({ date }: WorkoutLogProps) {
           </select>
           {selectedExercise && (
             <p className="text-xs text-gray-500">
-              Weight suggestions: +{formatWeight(selectedExerciseWeightRule.increment)}kg steps, max {formatWeight(selectedExerciseWeightRule.max)}kg
+              Suggestions: reps {repsOptions.join(', ')} • weight +{formatWeight(selectedExerciseWeightRule.increment)}kg steps
             </p>
           )}
         </div>
@@ -375,6 +383,7 @@ export default function WorkoutLog({ date }: WorkoutLogProps) {
                   type="number"
                   min="1"
                   step="1"
+                  list="reps-suggestions"
                   placeholder="Reps"
                   value={row.reps}
                   onChange={(e) => updateSetRow(index, 'reps', e.target.value)}
@@ -383,7 +392,6 @@ export default function WorkoutLog({ date }: WorkoutLogProps) {
                 <input
                   type="number"
                   min="0"
-                  max={selectedExerciseWeightRule.max}
                   step={selectedExerciseWeightRule.increment}
                   list="weight-suggestions-kg"
                   placeholder="Weight (kg)"
@@ -401,6 +409,11 @@ export default function WorkoutLog({ date }: WorkoutLogProps) {
               </div>
             ))}
           </div>
+          <datalist id="reps-suggestions">
+            {repsOptions.map((reps) => (
+              <option key={reps} value={String(reps)} />
+            ))}
+          </datalist>
           <datalist id="weight-suggestions-kg">
             {weightOptions.map((weight) => (
               <option key={weight} value={formatWeight(weight)} />
