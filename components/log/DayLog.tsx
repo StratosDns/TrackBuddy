@@ -466,22 +466,45 @@ function MealSection({ meal, logs, macros, foods, date, onDelete, onAdded, addin
         <div className="flex flex-col gap-2">
           {logs.map((log) => {
             const macros = log.food ? calcMacros(log.food, log.amount_g) : null;
+            const ingredientRows = log.food?.ingredient_rows ?? [];
+            const shouldShowIngredients = Boolean(log.food?.created_from_ingredients && ingredientRows.length > 0);
             return (
               <div
                 key={log.id}
-                className="flex items-center justify-between gap-3 py-2 border-b border-gray-50 last:border-0"
+                className="py-2 border-b border-gray-50 last:border-0"
               >
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-800 truncate">{log.food?.name}</p>
-                  <p className="text-xs text-gray-400">{log.amount_g}g</p>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-800 truncate">{log.food?.name}</p>
+                    <p className="text-xs text-gray-400">{log.amount_g}g</p>
+                  </div>
+                  {macros && <MacroBadge {...macros} compact />}
+                  <button
+                    onClick={() => onDelete(log.id)}
+                    className="text-gray-400 hover:text-red-500 transition-colors p-1 shrink-0"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
                 </div>
-                {macros && <MacroBadge {...macros} compact />}
-                <button
-                  onClick={() => onDelete(log.id)}
-                  className="text-gray-400 hover:text-red-500 transition-colors p-1 shrink-0"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
+                {shouldShowIngredients && (
+                  <div className="mt-2 ml-1 pl-3 border-l-2 border-gray-100 flex flex-col gap-1">
+                    <p className="text-xs font-medium text-gray-500">Ingredients</p>
+                    {ingredientRows.map((row) => {
+                      const ingredientFood = foods.find((food) => food.id === row.food_id);
+                      if (!ingredientFood) return null;
+                      const ingredientMacros = calcMacros(ingredientFood, row.amount_g);
+                      return (
+                        <div key={`${log.id}-${row.food_id}-${row.amount_g}`} className="flex items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-xs text-gray-700 truncate">{ingredientFood.name}</p>
+                            <p className="text-xs text-gray-400">{row.amount_g}g</p>
+                          </div>
+                          <MacroBadge {...ingredientMacros} compact />
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             );
           })}
