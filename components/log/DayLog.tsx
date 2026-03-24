@@ -223,6 +223,11 @@ const PIECES_MIN = '0.1';
 const PIECES_STEP = '0.1';
 const GRAMS_MIN = '0';
 const GRAMS_STEP = '1';
+const EXACT_MATCH_SCORE = 0;
+const PREFIX_MATCH_SCORE = 1;
+const WORD_PREFIX_MATCH_SCORE = 2;
+const CONTAINS_MATCH_SCORE = 3;
+const EMPTY_SEARCH_SCORE = 4;
 
 function MealSection({ meal, logs, macros, foods, date, onDelete, onUpdate, onAdded, adding, onToggleAdd }: MealSectionProps) {
   const [foodSearchTab, setFoodSearchTab] = useState<FoodSearchTab>('my-foods');
@@ -242,6 +247,27 @@ function MealSection({ meal, logs, macros, foods, date, onDelete, onUpdate, onAd
     const trimmed = myFoodSearch.trim().toLowerCase();
     return foods.filter((food) => !trimmed || food.name.toLowerCase().includes(trimmed));
   }, [foods, myFoodSearch]);
+  const recommendedMyFoods = useMemo(() => {
+    const trimmed = myFoodSearch.trim().toLowerCase();
+    const getScore = (food: Food) => {
+      if (!trimmed) return EMPTY_SEARCH_SCORE;
+      const name = food.name.toLowerCase();
+      if (name === trimmed) return EXACT_MATCH_SCORE;
+      if (name.startsWith(trimmed)) return PREFIX_MATCH_SCORE;
+      if (name.split(/\s+/).some((part) => part.startsWith(trimmed))) return WORD_PREFIX_MATCH_SCORE;
+      return CONTAINS_MATCH_SCORE;
+    };
+
+    return filteredMyFoods
+      .map((food) => ({ food, score: getScore(food) }))
+      .sort((a, b) => {
+        const scoreDiff = a.score - b.score;
+        if (scoreDiff !== 0) return scoreDiff;
+        return a.food.name.localeCompare(b.food.name);
+      })
+      .slice(0, 8)
+      .map(({ food }) => food);
+  }, [filteredMyFoods, myFoodSearch]);
 
   const selectedFood = foodSearchTab === 'my-foods'
     ? foods.find((f) => f.id === foodId)
@@ -426,6 +452,33 @@ function MealSection({ meal, logs, macros, foods, date, onDelete, onUpdate, onAd
                   onChange={(e) => setMyFoodSearch(e.target.value)}
                   className="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 outline-none focus:border-green-500 focus:ring-2 focus:ring-green-200"
                 />
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {recommendedMyFoods.length === 0 ? (
+                  myFoodSearch.trim() ? (
+                    <p className="text-xs text-gray-500">No food recommendations match your search.</p>
+                  ) : null
+                ) : (
+                  recommendedMyFoods.map((food) => (
+                    <button
+                      key={food.id}
+                      type="button"
+                      onClick={() => {
+                        setFoodId(food.id);
+                        setAmountInput('');
+                        setAmountUnit(food.input_basis === 'per_piece' ? 'pieces' : 'grams');
+                        setMyFoodSearch(food.name);
+                      }}
+                      className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
+                        foodId === food.id
+                          ? 'border-green-300 bg-green-50 text-green-700'
+                          : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
+                      }`}
+                    >
+                      {food.name}
+                    </button>
+                  ))
+                )}
               </div>
               <label className="text-sm font-medium text-gray-700">Select food</label>
               <select
