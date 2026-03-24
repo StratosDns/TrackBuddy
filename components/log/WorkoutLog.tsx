@@ -49,9 +49,13 @@ function getExerciseWeightRule(exercise?: Exercise): ExerciseWeightRule {
 }
 
 function normalizeWeight(weight: number, rule: ExerciseWeightRule): number {
-  const clamped = Math.min(Math.max(weight, 0), rule.max);
+  const clamped = clampWeight(weight, rule);
   const normalized = Math.round(clamped / rule.increment) * rule.increment;
   return Number(normalized.toFixed(2));
+}
+
+function clampWeight(weight: number, rule: ExerciseWeightRule): number {
+  return Math.min(Math.max(weight, 0), rule.max);
 }
 
 function formatWeight(weight: number): string {
@@ -135,12 +139,10 @@ export default function WorkoutLog({ date }: WorkoutLogProps) {
     [selectedExercise]
   );
   const weightOptions = useMemo(() => {
-    const options: number[] = [];
     const count = Math.floor(selectedExerciseWeightRule.max / selectedExerciseWeightRule.increment);
-    for (let i = 1; i <= count; i += 1) {
-      options.push(Number((i * selectedExerciseWeightRule.increment).toFixed(2)));
-    }
-    return options;
+    return Array.from({ length: count }, (_, index) =>
+      Number(((index + 1) * selectedExerciseWeightRule.increment).toFixed(2))
+    );
   }, [selectedExerciseWeightRule]);
 
   function addSetRow() {
@@ -160,7 +162,7 @@ export default function WorkoutLog({ date }: WorkoutLogProps) {
 
         const numericValue = Number(value);
         if (Number.isNaN(numericValue)) return { ...row, weight_kg: value };
-        const clamped = Math.min(Math.max(numericValue, 0), selectedExerciseWeightRule.max);
+        const clamped = clampWeight(numericValue, selectedExerciseWeightRule);
         return { ...row, weight_kg: formatWeight(clamped) };
       })
     );
