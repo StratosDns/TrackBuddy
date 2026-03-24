@@ -38,7 +38,7 @@ export const DIAGRAM_METRIC_META: Record<DiagramMetric, { label: string; color: 
   weight: { label: 'Weight', color: '#3b82f6', unit: 'kg' },
   carbs: { label: 'Carbs', color: '#eab308', unit: 'g' },
   fats: { label: 'Fats', color: '#ef4444', unit: 'g' },
-  protein: { label: 'Protein', color: '#3b82f6', unit: 'g' },
+  protein: { label: 'Protein', color: '#8b5cf6', unit: 'g' },
 };
 
 export interface VisibleMacros {

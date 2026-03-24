@@ -135,6 +135,7 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
 
     if (mode === 'gym') {
       setMacroData([]);
+      setWeightData([]);
       setWaterData([]);
       return;
     }
