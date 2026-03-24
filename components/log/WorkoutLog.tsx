@@ -165,15 +165,14 @@ export default function WorkoutLog({ date }: WorkoutLogProps) {
           </div>
         </div>
 
-        <Input
-          label="Search exercise"
-          placeholder="Find by name..."
-          value={exerciseSearch}
-          onChange={(e) => setExerciseSearch(e.target.value)}
-        />
-
         <div className="flex flex-col gap-2">
           <label className="text-sm font-medium text-gray-700">Choose exercise</label>
+          <Input
+            placeholder="Find by name..."
+            value={exerciseSearch}
+            onChange={(e) => setExerciseSearch(e.target.value)}
+            aria-label="Search exercises"
+          />
           <select
             value={selectedExerciseId}
             onChange={(e) => setSelectedExerciseId(e.target.value)}
