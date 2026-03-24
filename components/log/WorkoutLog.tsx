@@ -6,7 +6,7 @@ import { Exercise, WorkoutLog as WorkoutLogType, WorkoutSetRow } from '@/lib/typ
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
-import { Plus, Trash2 } from 'lucide-react';
+import { Pencil, Plus, Trash2, X } from 'lucide-react';
 
 interface WorkoutLogProps {
   date: string;
@@ -81,11 +81,13 @@ export default function WorkoutLog({ date }: WorkoutLogProps) {
   const [workoutLogs, setWorkoutLogs] = useState<WorkoutLogType[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingSet, setSavingSet] = useState(false);
+  const [saveError, setSaveError] = useState('');
 
   const [exerciseSearch, setExerciseSearch] = useState('');
   const [selectedExerciseId, setSelectedExerciseId] = useState('');
   const [setRows, setSetRows] = useState<{ reps: string; weight_kg: string }[]>([{ reps: '', weight_kg: '' }]);
   const [notes, setNotes] = useState('');
+  const [editingLogId, setEditingLogId] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadWorkoutData() {
@@ -125,10 +127,29 @@ export default function WorkoutLog({ date }: WorkoutLogProps) {
 
   const filteredExercises = useMemo(() => {
     const trimmed = exerciseSearch.trim().toLowerCase();
-    return allExercises
-      .filter((exercise) => exercise.user_id === currentUserId || exercise.is_public)
-      .filter((exercise) => !trimmed || exercise.name.toLowerCase().includes(trimmed));
+    const visible = allExercises.filter((exercise) => exercise.user_id === currentUserId || exercise.is_public);
+    const getScore = (exercise: Exercise) => {
+      if (!trimmed) return 0;
+      const name = exercise.name.toLowerCase();
+      if (name === trimmed) return 0;
+      if (name.startsWith(trimmed)) return 1;
+      if (name.split(/\s+/).some((part) => part.startsWith(trimmed))) return 2;
+      if (name.includes(trimmed)) return 3;
+      return 4;
+    };
+
+    return visible
+      .filter((exercise) => !trimmed || exercise.name.toLowerCase().includes(trimmed))
+      .sort((a, b) => {
+        const scoreDiff = getScore(a) - getScore(b);
+        if (scoreDiff !== 0) return scoreDiff;
+        return a.name.localeCompare(b.name);
+      });
   }, [allExercises, exerciseSearch, currentUserId]);
+  const recommendedExercises = useMemo(
+    () => filteredExercises.slice(0, 8),
+    [filteredExercises]
+  );
 
   const selectedExercise = useMemo(
     () => allExercises.find((exercise) => exercise.id === selectedExerciseId),
@@ -170,6 +191,7 @@ export default function WorkoutLog({ date }: WorkoutLogProps) {
 
   async function saveWorkoutEntry() {
     const supabase = createClient();
+    setSaveError('');
     if (!selectedExerciseId) return;
     const parsedRows = setRows
       .map((row) => ({ reps: Number(row.reps), weight_kg: Number(row.weight_kg) }))
@@ -188,16 +210,22 @@ export default function WorkoutLog({ date }: WorkoutLogProps) {
     }
 
     const payload = {
-      user_id: user.id,
-      date,
       exercise_id: selectedExerciseId,
       set_rows: parsedRows,
       notes: notes.trim(),
     };
 
-    const { data, error } = await supabase
-      .from('workout_logs')
-      .insert(payload)
+    const query = editingLogId
+      ? supabase
+        .from('workout_logs')
+        .update(payload)
+        .eq('id', editingLogId)
+        .eq('user_id', user.id)
+      : supabase
+        .from('workout_logs')
+        .insert({ ...payload, user_id: user.id, date });
+
+    const { data, error } = await query
       .select('*, exercise:exercises(*)')
       .single();
 
@@ -206,9 +234,16 @@ export default function WorkoutLog({ date }: WorkoutLogProps) {
         ...(data as WorkoutLogType & { set_rows: unknown }),
         set_rows: parseSetRows((data as WorkoutLogType & { set_rows: unknown }).set_rows),
       } as WorkoutLogType;
-      setWorkoutLogs((prev) => [...prev, mapped]);
-      setSetRows([{ reps: '', weight_kg: '' }]);
-      setNotes('');
+      setWorkoutLogs((prev) => (
+        editingLogId
+          ? prev.map((log) => (log.id === editingLogId ? mapped : log))
+          : [...prev, mapped]
+      ));
+      resetWorkoutForm();
+    } else if (editingLogId) {
+      setSaveError('Unable to update this workout log. Please try again.');
+    } else {
+      setSaveError('Unable to save this workout log. Please try again.');
     }
 
     setSavingSet(false);
@@ -218,6 +253,30 @@ export default function WorkoutLog({ date }: WorkoutLogProps) {
     const supabase = createClient();
     await supabase.from('workout_logs').delete().eq('id', id);
     setWorkoutLogs((prev) => prev.filter((log) => log.id !== id));
+  }
+
+  function editWorkoutEntry(log: WorkoutLogType) {
+    setEditingLogId(log.id);
+    setSelectedExerciseId(log.exercise_id);
+    setExerciseSearch(log.exercise?.name || '');
+    setSetRows(
+      log.set_rows.length > 0
+        ? log.set_rows.map((setRow) => ({ reps: String(setRow.reps), weight_kg: formatWeight(setRow.weight_kg) }))
+        : [{ reps: '', weight_kg: '' }]
+    );
+    setNotes(log.notes || '');
+  }
+
+  function resetWorkoutForm() {
+    setEditingLogId(null);
+    setSelectedExerciseId('');
+    setExerciseSearch('');
+    setSetRows([{ reps: '', weight_kg: '' }]);
+    setNotes('');
+  }
+
+  function cancelEditingWorkoutEntry() {
+    resetWorkoutForm();
   }
 
   const totalSetsToday = workoutLogs.reduce((sum, log) => sum + log.set_rows.length, 0);
@@ -253,6 +312,29 @@ export default function WorkoutLog({ date }: WorkoutLogProps) {
             onChange={(e) => setExerciseSearch(e.target.value)}
             aria-label="Search exercises"
           />
+          <div className="flex flex-wrap gap-2">
+            {recommendedExercises.length === 0 ? (
+              <p className="text-xs text-gray-500">No exercise recommendations match your search.</p>
+            ) : (
+              recommendedExercises.map((exercise) => (
+                <button
+                  key={exercise.id}
+                  type="button"
+                  onClick={() => {
+                    setSelectedExerciseId(exercise.id);
+                    setExerciseSearch(exercise.name);
+                  }}
+                  className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
+                    selectedExerciseId === exercise.id
+                      ? 'border-red-300 bg-red-50 text-red-700'
+                      : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  {exercise.name}
+                </button>
+              ))
+            )}
+          </div>
           <select
             value={selectedExerciseId}
             onChange={(e) => setSelectedExerciseId(e.target.value)}
@@ -333,13 +415,26 @@ export default function WorkoutLog({ date }: WorkoutLogProps) {
             />
           </div>
           <div className="mt-3">
-            <Button
-              onClick={saveWorkoutEntry}
-              className="bg-red-600 hover:bg-red-700"
-              loading={savingSet}
-            >
-              Save Workout Log
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                onClick={saveWorkoutEntry}
+                className="bg-red-600 hover:bg-red-700"
+                loading={savingSet}
+              >
+                {editingLogId ? 'Update Workout Log' : 'Save Workout Log'}
+              </Button>
+              {editingLogId && (
+                <Button
+                  variant="secondary"
+                  onClick={cancelEditingWorkoutEntry}
+                  disabled={savingSet}
+                >
+                  <X className="w-3.5 h-3.5" />
+                  Cancel
+                </Button>
+              )}
+            </div>
+            {saveError && <p className="mt-2 text-xs text-red-600">{saveError}</p>}
           </div>
         </div>
 
@@ -358,13 +453,22 @@ export default function WorkoutLog({ date }: WorkoutLogProps) {
                   </p>
                   {log.notes && <p className="text-xs text-gray-600 mt-1">{log.notes}</p>}
                 </div>
-                <button
-                  onClick={() => deleteWorkoutEntry(log.id)}
-                  className="p-2 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-                  title="Delete log"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => editWorkoutEntry(log)}
+                    className="p-2 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                    title="Edit log"
+                  >
+                    <Pencil className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => deleteWorkoutEntry(log.id)}
+                    className="p-2 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                    title="Delete log"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
             ))}
           </div>
