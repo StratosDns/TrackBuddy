@@ -225,7 +225,7 @@ function MealSection({ meal, logs, macros, foods, date, onDelete, onAdded, addin
         : parsedAmount;
   const preview = selectedFood && amountInGrams ? calcMacros(selectedFood, amountInGrams) : null;
 
-  const formatLoggedAmount = (food: Food | undefined, amountG: number) => {
+  const formatLoggedQuantity = (food: Food | undefined, amountG: number) => {
     const parsedPieceWeightG = food?.piece_weight_g != null
       ? Number(food.piece_weight_g)
       : null;
@@ -488,7 +488,7 @@ function MealSection({ meal, logs, macros, foods, date, onDelete, onAdded, addin
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 min-w-0">
                       <span className="inline-flex items-center justify-center h-5 min-w-5 px-1.5 rounded-full bg-gray-200 text-[10px] font-semibold text-gray-600 shrink-0">
-                        {formatLoggedAmount(log.food, log.amount_g)}
+                        {formatLoggedQuantity(log.food, log.amount_g)}
                       </span>
                       <p className="text-sm font-medium text-gray-800 truncate">{log.food?.name}</p>
                     </div>
