@@ -223,6 +223,11 @@ const PIECES_MIN = '0.1';
 const PIECES_STEP = '0.1';
 const GRAMS_MIN = '0';
 const GRAMS_STEP = '1';
+const EXACT_MATCH_SCORE = 0;
+const PREFIX_MATCH_SCORE = 1;
+const WORD_PREFIX_MATCH_SCORE = 2;
+const CONTAINS_MATCH_SCORE = 3;
+const EMPTY_SEARCH_SCORE = 4;
 
 function MealSection({ meal, logs, macros, foods, date, onDelete, onUpdate, onAdded, adding, onToggleAdd }: MealSectionProps) {
   const [foodSearchTab, setFoodSearchTab] = useState<FoodSearchTab>('my-foods');
@@ -245,23 +250,23 @@ function MealSection({ meal, logs, macros, foods, date, onDelete, onUpdate, onAd
   const recommendedMyFoods = useMemo(() => {
     const trimmed = myFoodSearch.trim().toLowerCase();
     const getScore = (food: Food) => {
-      if (!trimmed) return 0;
+      if (!trimmed) return EMPTY_SEARCH_SCORE;
       const name = food.name.toLowerCase();
-      if (name === trimmed) return 0;
-      if (name.startsWith(trimmed)) return 1;
-      if (name.split(/\s+/).some((part) => part.startsWith(trimmed))) return 2;
-      if (name.includes(trimmed)) return 3;
-      return 4;
+      if (name === trimmed) return EXACT_MATCH_SCORE;
+      if (name.startsWith(trimmed)) return PREFIX_MATCH_SCORE;
+      if (name.split(/\s+/).some((part) => part.startsWith(trimmed))) return WORD_PREFIX_MATCH_SCORE;
+      return CONTAINS_MATCH_SCORE;
     };
 
     return filteredMyFoods
-      .slice()
+      .map((food) => ({ food, score: getScore(food) }))
       .sort((a, b) => {
-        const scoreDiff = getScore(a) - getScore(b);
+        const scoreDiff = a.score - b.score;
         if (scoreDiff !== 0) return scoreDiff;
-        return a.name.localeCompare(b.name);
+        return a.food.name.localeCompare(b.food.name);
       })
-      .slice(0, 8);
+      .slice(0, 8)
+      .map(({ food }) => food);
   }, [filteredMyFoods, myFoodSearch]);
 
   const selectedFood = foodSearchTab === 'my-foods'
@@ -450,7 +455,9 @@ function MealSection({ meal, logs, macros, foods, date, onDelete, onUpdate, onAd
               </div>
               <div className="flex flex-wrap gap-2">
                 {recommendedMyFoods.length === 0 ? (
-                  <p className="text-xs text-gray-500">No food recommendations match your search.</p>
+                  myFoodSearch.trim() ? (
+                    <p className="text-xs text-gray-500">No food recommendations match your search.</p>
+                  ) : null
                 ) : (
                   recommendedMyFoods.map((food) => (
                     <button
