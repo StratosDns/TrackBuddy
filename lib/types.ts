@@ -62,6 +62,33 @@ export interface WaterLog {
   created_at: string;
 }
 
+export interface Exercise {
+  id: string;
+  user_id: string | null;
+  name: string;
+  muscle_group: string;
+  description: string;
+  is_public: boolean;
+  is_preset: boolean;
+  created_at: string;
+}
+
+export interface WorkoutSetRow {
+  reps: number;
+  weight_kg: number;
+}
+
+export interface WorkoutLog {
+  id: string;
+  user_id: string;
+  date: string; // YYYY-MM-DD
+  exercise_id: string;
+  set_rows: WorkoutSetRow[];
+  notes: string;
+  created_at: string;
+  exercise?: Exercise;
+}
+
 export interface DayMacros {
   calories: number;
   protein: number;

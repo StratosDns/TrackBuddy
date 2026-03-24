@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
-import { Calendar, BookOpen, User, Apple, LogOut, Menu, X, Users } from 'lucide-react';
+import { Calendar, BookOpen, User, Apple, LogOut, Menu, X, Users, Dumbbell, ArrowRightLeft } from 'lucide-react';
 import { useState } from 'react';
 import { format } from 'date-fns';
 
@@ -12,6 +12,7 @@ const navItems = [
   { href: '/dashboard', label: 'Calendar', icon: Calendar },
   { href: `/log/${format(new Date(), 'yyyy-MM-dd')}`, label: 'Today', icon: BookOpen },
   { href: '/foods', label: 'My Foods', icon: Apple },
+  { href: '/gym', label: 'GymTracker', icon: Dumbbell },
   { href: '/friends', label: 'Friends', icon: Users },
   { href: '/profile', label: 'Profile', icon: User },
 ];
@@ -20,6 +21,12 @@ export default function Navigation() {
   const pathname = usePathname();
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const isGymMode = pathname === '/gym' || pathname.startsWith('/gym/');
+  const activeClasses = isGymMode ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700';
+  const mobileActiveClasses = isGymMode ? 'text-red-600' : 'text-green-600';
+  const iconBg = isGymMode ? 'bg-red-600' : 'bg-green-600';
+  const BrandIcon = isGymMode ? Dumbbell : Apple;
+  const worldLabel = isGymMode ? 'Gym World' : 'Diet World';
 
   async function handleSignOut() {
     const supabase = createClient();
@@ -28,15 +35,29 @@ export default function Navigation() {
     router.refresh();
   }
 
+  function toggleWorld() {
+    router.push(isGymMode ? '/dashboard' : '/gym');
+  }
+
   return (
     <>
       {/* Desktop sidebar */}
       <aside className="hidden md:flex flex-col w-56 bg-white border-r border-gray-200 min-h-screen py-6 px-4 gap-2 fixed top-0 left-0 z-30">
         <div className="flex items-center gap-2 mb-6 px-2">
-          <div className="w-8 h-8 bg-green-600 rounded-lg flex items-center justify-center">
-            <Apple className="w-5 h-5 text-white" />
+          <div className={`w-8 h-8 ${iconBg} rounded-lg flex items-center justify-center`}>
+            <BrandIcon className="w-5 h-5 text-white" />
           </div>
           <span className="font-bold text-lg text-gray-900">TrackBuddy</span>
+          <button
+            onClick={toggleWorld}
+            title={`Switch to ${isGymMode ? 'diet' : 'gym'} world`}
+            className={`ml-auto inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium border transition-colors ${
+              isGymMode ? 'border-red-200 text-red-700 hover:bg-red-50' : 'border-green-200 text-green-700 hover:bg-green-50'
+            }`}
+          >
+            <ArrowRightLeft className="w-3 h-3" />
+            {worldLabel}
+          </button>
         </div>
 
         {navItems.map(({ href, label, icon: Icon }) => {
@@ -46,7 +67,7 @@ export default function Navigation() {
               key={href}
               href={href}
               className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors
-                ${active ? 'bg-green-50 text-green-700' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'}`}
+                ${active ? activeClasses : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'}`}
             >
               <Icon className="w-4 h-4 shrink-0" />
               {label}
@@ -68,17 +89,28 @@ export default function Navigation() {
       {/* Mobile top bar */}
       <header className="md:hidden fixed top-0 left-0 right-0 z-40 bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <div className="w-7 h-7 bg-green-600 rounded-md flex items-center justify-center">
-            <Apple className="w-4 h-4 text-white" />
+          <div className={`w-7 h-7 ${iconBg} rounded-md flex items-center justify-center`}>
+            <BrandIcon className="w-4 h-4 text-white" />
           </div>
           <span className="font-bold text-gray-900">TrackBuddy</span>
         </div>
-        <button
-          onClick={() => setMobileOpen(!mobileOpen)}
-          className="p-1.5 rounded-lg text-gray-600 hover:bg-gray-100"
-        >
-          {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={toggleWorld}
+            title={`Switch to ${isGymMode ? 'diet' : 'gym'} world`}
+            className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium border transition-colors ${
+              isGymMode ? 'border-red-200 text-red-700 hover:bg-red-50' : 'border-green-200 text-green-700 hover:bg-green-50'
+            }`}
+          >
+            <ArrowRightLeft className="w-3 h-3" />
+          </button>
+          <button
+            onClick={() => setMobileOpen(!mobileOpen)}
+            className="p-1.5 rounded-lg text-gray-600 hover:bg-gray-100"
+          >
+            {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          </button>
+        </div>
       </header>
 
       {/* Mobile drawer */}
@@ -92,8 +124,8 @@ export default function Navigation() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center gap-2 mb-6 px-2">
-              <div className="w-8 h-8 bg-green-600 rounded-lg flex items-center justify-center">
-                <Apple className="w-5 h-5 text-white" />
+              <div className={`w-8 h-8 ${iconBg} rounded-lg flex items-center justify-center`}>
+                <BrandIcon className="w-5 h-5 text-white" />
               </div>
               <span className="font-bold text-lg text-gray-900">TrackBuddy</span>
             </div>
@@ -106,7 +138,7 @@ export default function Navigation() {
                   href={href}
                   onClick={() => setMobileOpen(false)}
                   className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors
-                    ${active ? 'bg-green-50 text-green-700' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'}`}
+                    ${active ? activeClasses : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'}`}
                 >
                   <Icon className="w-4 h-4 shrink-0" />
                   {label}
@@ -136,7 +168,7 @@ export default function Navigation() {
               key={href}
               href={href}
               className={`flex-1 flex flex-col items-center py-2 text-xs font-medium transition-colors
-                ${active ? 'text-green-600' : 'text-gray-500'}`}
+                ${active ? mobileActiveClasses : 'text-gray-500'}`}
             >
               <Icon className="w-5 h-5 mb-0.5" />
               {label}
