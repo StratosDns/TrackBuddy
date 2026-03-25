@@ -80,15 +80,8 @@ function normalizeDiagramConfigs(source: unknown): DiagramConfig[] {
     .filter((row): row is DiagramConfig => row !== null);
 }
 
-function readDiagramConfigsFromLocalStorage(localStorageKey: string): DiagramConfig[] {
-  if (typeof window === 'undefined') return [];
-  try {
-    const raw = window.localStorage.getItem(localStorageKey);
-    if (!raw) return [];
-    return normalizeDiagramConfigs(JSON.parse(raw) as unknown);
-  } catch {
-    return [];
-  }
+function isDiagramStyle(value: string): value is DiagramStyle {
+  return DIAGRAM_STYLES.includes(value as DiagramStyle);
 }
 
 export default function FriendProfilePage({
@@ -108,7 +101,7 @@ export default function FriendProfilePage({
 
   // Chart data (only loaded if friends)
   const [range, setRange] = useState(30);
-  const [mode] = useState<'diet' | 'gym'>(parseModeFromCookie);
+  const mode = parseModeFromCookie();
   const [weightData, setWeightData] = useState<{ date: string; weight: number }[]>([]);
   const [waterData, setWaterData] = useState<{ date: string; water: number }[]>([]);
   const [macroData, setMacroData] = useState<{
@@ -116,16 +109,25 @@ export default function FriendProfilePage({
   }[]>([]);
   const [todayLogs, setTodayLogs] = useState<(FoodLog & { food: Food })[]>([]);
   const [dataLoading, setDataLoading] = useState(false);
-  const [diagramConfigs, setDiagramConfigs] = useState<DiagramConfig[]>(
-    () => readDiagramConfigsFromLocalStorage(`tb_friend_diagrams:${userId}`)
-  );
+  const [diagramConfigs, setDiagramConfigs] = useState<DiagramConfig[]>([]);
   const [showDiagramPicker, setShowDiagramPicker] = useState(false);
   const [pendingMetrics, setPendingMetrics] = useState<DiagramMetric[]>([]);
   const [pendingStyle, setPendingStyle] = useState<DiagramStyle>('bar');
   const [editingDiagramId, setEditingDiagramId] = useState<string | null>(null);
 
-  function getLocalStorageKey() {
-    return `tb_friend_diagrams:${userId}`;
+  function buildFriendDiagramStorageKey(targetUserId: string) {
+    return `trackbuddy_friend_diagrams:${targetUserId}`;
+  }
+
+  function seedViewerDiagramConfigsFromFriend(
+    rawFriendDiagrams: unknown,
+    localStorageKey: string
+  ) {
+    const friendDiagrams = normalizeDiagramConfigs(rawFriendDiagrams);
+    setDiagramConfigs(friendDiagrams);
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(localStorageKey, JSON.stringify(friendDiagrams));
+    }
   }
 
   function resetDiagramPicker() {
@@ -137,7 +139,7 @@ export default function FriendProfilePage({
 
   function persistDiagramConfigsToLocalStorage(configs: DiagramConfig[]) {
     if (typeof window === 'undefined') return;
-    window.localStorage.setItem(getLocalStorageKey(), JSON.stringify(configs));
+    window.localStorage.setItem(buildFriendDiagramStorageKey(userId), JSON.stringify(configs));
   }
 
   async function loadProfileAndFriendship() {
@@ -173,7 +175,7 @@ export default function FriendProfilePage({
     }
   }
 
-  async function loadFriendData() {
+  async function loadFriendDietData() {
     if (friendshipStatus !== 'accepted' || mode !== 'diet') return;
     setDataLoading(true);
     const supabase = createClient();
@@ -236,12 +238,16 @@ export default function FriendProfilePage({
     setWaterData(waters.map((w) => ({ date: w.date, water: w.water_ml })));
 
     if (typeof window !== 'undefined') {
-      const localStorageKey = getLocalStorageKey();
+      const localStorageKey = buildFriendDiagramStorageKey(userId);
       const rawLocal = window.localStorage.getItem(localStorageKey);
-      if (!rawLocal) {
-        const friendDiagrams = normalizeDiagramConfigs(diagramsRes.data || []);
-        setDiagramConfigs(friendDiagrams);
-        persistDiagramConfigsToLocalStorage(friendDiagrams);
+      if (rawLocal) {
+        try {
+          setDiagramConfigs(normalizeDiagramConfigs(JSON.parse(rawLocal)));
+        } catch {
+          seedViewerDiagramConfigsFromFriend(diagramsRes.data || [], localStorageKey);
+        }
+      } else {
+        seedViewerDiagramConfigsFromFriend(diagramsRes.data || [], localStorageKey);
       }
     }
 
@@ -250,7 +256,7 @@ export default function FriendProfilePage({
   }
 
   useEffect(() => { loadProfileAndFriendship(); }, [userId]);
-  useEffect(() => { loadFriendData(); }, [userId, friendshipStatus, range, mode]);
+  useEffect(() => { loadFriendDietData(); }, [userId, friendshipStatus, range, mode]);
 
   const diagramData = useMemo<DiagramChartDataPoint[]>(() => {
     const byDate: Record<string, DiagramChartDataPoint> = {};
@@ -279,9 +285,11 @@ export default function FriendProfilePage({
   }, [macroData, weightData, waterData]);
 
   function togglePendingMetric(metric: DiagramMetric) {
-    setPendingMetrics((prev) => (
-      prev.includes(metric) ? prev.filter((m) => m !== metric) : [...prev, metric]
-    ));
+    setPendingMetrics((prev) => {
+      const index = prev.indexOf(metric);
+      if (index === -1) return [...prev, metric];
+      return [...prev.slice(0, index), ...prev.slice(index + 1)];
+    });
   }
 
   function openNewDiagramPicker() {
@@ -352,7 +360,7 @@ export default function FriendProfilePage({
     const supabase = createClient();
     await supabase.from('friendships').update({ status: 'accepted' }).eq('id', friendshipId);
     setFriendshipStatus('accepted');
-    loadFriendData();
+    loadFriendDietData();
   }
 
   async function removeFriend() {
@@ -480,9 +488,9 @@ export default function FriendProfilePage({
             <p className="text-sm text-gray-400 max-w-sm">
               {isPending
                 ? iAmRequester
-                  ? `Your friend request is pending. Once ${displayName} accepts, you'll be able to see their dashboards.`
-                  : `${displayName} sent you a friend request. Accept it to view their dashboards.`
-                : `Add ${displayName} as a friend to view their dashboards.`
+                  ? `Your friend request is pending. Once ${displayName} accepts, you'll be able to see their diet and gym dashboards.`
+                  : `${displayName} sent you a friend request. Accept it to view their diet and gym dashboards.`
+                : `Add ${displayName} as a friend to view their diet and gym dashboards.`
               }
             </p>
           </div>
@@ -493,7 +501,7 @@ export default function FriendProfilePage({
       {isFriend && (
         <>
           {mode === 'gym' ? (
-            <GymDashboard viewerId={userId} />
+            <GymDashboard targetUserId={userId} />
           ) : (
             <>
               {/* Range selector */}
@@ -572,7 +580,7 @@ export default function FriendProfilePage({
 
                       <button
                         onClick={openNewDiagramPicker}
-                        className="w-full h-24 rounded-full border-2 border-dashed border-gray-300 bg-gray-100/90 hover:bg-gray-100 transition-colors flex items-center justify-center text-gray-500"
+                        className="w-full h-24 rounded-xl border-2 border-dashed border-gray-300 bg-gray-100/90 hover:bg-gray-100 transition-colors flex items-center justify-center text-gray-500"
                       >
                         <Plus className="w-7 h-7" />
                       </button>
@@ -681,7 +689,10 @@ export default function FriendProfilePage({
               <select
                 id="friend-diagram-style"
                 value={pendingStyle}
-                onChange={(e) => setPendingStyle(e.target.value as DiagramStyle)}
+                onChange={(e) => {
+                  const nextStyle = e.target.value;
+                  if (isDiagramStyle(nextStyle)) setPendingStyle(nextStyle);
+                }}
                 className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
               >
                 <option value="bar">{DIAGRAM_STYLE_LABELS.bar}</option>
