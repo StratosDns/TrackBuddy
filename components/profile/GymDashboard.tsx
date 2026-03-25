@@ -44,7 +44,7 @@ function timelineFormatter(metric: TimelineMetric, value: number): string {
   return `${value} sets`;
 }
 
-export default function GymDashboard() {
+export default function GymDashboard({ viewerId }: { viewerId?: string }) {
   const [workoutLogs, setWorkoutLogs] = useState<WorkoutLog[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -67,10 +67,11 @@ export default function GymDashboard() {
         return;
       }
 
+      const targetUserId = viewerId || user.id;
       const { data: logs } = await supabase
         .from('workout_logs')
         .select('*, exercise:exercises(*)')
-        .eq('user_id', user.id)
+        .eq('user_id', targetUserId)
         .order('date', { ascending: true });
 
       setWorkoutLogs(
@@ -83,7 +84,7 @@ export default function GymDashboard() {
     }
 
     loadGymData();
-  }, []);
+  }, [viewerId]);
 
   const timelineData = useMemo(() => {
     const grouped = new Map<string, WorkoutLog[]>();
