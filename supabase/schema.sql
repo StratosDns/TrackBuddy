@@ -222,6 +222,40 @@ create policy "Friends can view each other's water logs"
 create index if not exists water_logs_user_date_idx on public.water_logs (user_id, date);
 
 -- =========================================================
+-- DIAGRAM_CONFIGS TABLE
+-- =========================================================
+create table if not exists public.diagram_configs (
+  id uuid default gen_random_uuid() primary key,
+  user_id uuid references auth.users(id) on delete cascade not null,
+  metrics text[] not null default '{}'::text[],
+  style text not null check (style in ('bar', 'line', 'area', 'stackedBar', 'stepLine')),
+  created_at timestamptz default now() not null,
+  updated_at timestamptz default now() not null
+);
+
+alter table public.diagram_configs enable row level security;
+
+create policy "Users can manage their own diagram configs"
+  on public.diagram_configs for all
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+create index if not exists diagram_configs_user_created_idx on public.diagram_configs (user_id, created_at);
+
+create or replace function public.touch_diagram_configs_updated_at()
+returns trigger as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$ language plpgsql;
+
+drop trigger if exists diagram_configs_set_updated_at on public.diagram_configs;
+create trigger diagram_configs_set_updated_at
+before update on public.diagram_configs
+for each row execute function public.touch_diagram_configs_updated_at();
+
+-- =========================================================
 -- EXERCISES TABLE
 -- =========================================================
 create table if not exists public.exercises (
