@@ -33,6 +33,20 @@ interface DiagramConfig {
 }
 
 const DIAGRAM_METRICS: DiagramMetric[] = ['calories', 'water', 'weight', 'carbs', 'fats', 'protein'];
+const DIAGRAM_STYLES: DiagramStyle[] = ['bar', 'line', 'area', 'stackedBar', 'stepLine'];
+const DIAGRAM_STYLE_LABELS: Record<DiagramStyle, string> = {
+  bar: 'Bar',
+  line: 'Line',
+  area: 'Area',
+  stackedBar: 'Stacked Bar',
+  stepLine: 'Step Line',
+};
+
+interface DiagramConfigRow {
+  id: string;
+  metrics: string[];
+  style: string;
+}
 
 export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -58,11 +72,21 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
   const [showDiagramPicker, setShowDiagramPicker] = useState(false);
   const [pendingMetrics, setPendingMetrics] = useState<DiagramMetric[]>([]);
   const [pendingStyle, setPendingStyle] = useState<DiagramStyle>('bar');
+  const [editingDiagramId, setEditingDiagramId] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+
+  const resetDiagramPicker = useCallback(() => {
+    setPendingMetrics([]);
+    setPendingStyle('bar');
+    setEditingDiagramId(null);
+    setShowDiagramPicker(false);
+  }, []);
 
   const loadData = useCallback(async () => {
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
+    setCurrentUserId(user.id);
 
     setEmail(user.email || '');
 
@@ -104,7 +128,7 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
       endDate = format(new Date(), 'yyyy-MM-dd');
     }
 
-    const [logsRes, weightsRes, waterRes] = await Promise.all([
+    const [logsRes, weightsRes, waterRes, diagramsRes] = await Promise.all([
       supabase
         .from('food_logs')
         .select('*, food:foods(*)')
@@ -126,7 +150,24 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
         .gte('date', startDate)
         .lte('date', endDate)
         .order('date'),
+      supabase
+        .from('diagram_configs')
+        .select('id, metrics, style')
+        .eq('user_id', user.id)
+        .order('created_at'),
     ]);
+
+    const validMetrics = new Set<DiagramMetric>(DIAGRAM_METRICS);
+    const validStyles = new Set<DiagramStyle>(DIAGRAM_STYLES);
+    const diagramRows: DiagramConfigRow[] = diagramsRes.data || [];
+    const normalizedDiagrams: DiagramConfig[] = diagramRows
+      .map((row) => ({
+        id: row.id,
+        metrics: (row.metrics || []).filter((metric): metric is DiagramMetric => validMetrics.has(metric as DiagramMetric)),
+        style: validStyles.has(row.style as DiagramStyle) ? (row.style as DiagramStyle) : 'bar',
+      }))
+      .filter((row) => row.metrics.length > 0);
+    setDiagramConfigs(normalizedDiagrams);
 
     const weights: WeightLog[] = weightsRes.data || [];
     setWeightData(weights.map((w) => ({ date: w.date, weight: w.weight_kg })));
@@ -215,23 +256,84 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
     ));
   }
 
-  function addDiagram() {
+  async function addDiagram() {
     if (pendingMetrics.length === 0) return;
+    if (!currentUserId) return;
+
+    const supabase = createClient();
+
+    if (editingDiagramId) {
+      const { error } = await supabase
+        .from('diagram_configs')
+        .update({
+          metrics: [...pendingMetrics],
+          style: pendingStyle,
+        })
+        .eq('id', editingDiagramId)
+        .eq('user_id', currentUserId);
+
+      if (error) return;
+
+      setDiagramConfigs((prev) => prev.map((diagram) => (
+        diagram.id === editingDiagramId
+          ? { ...diagram, metrics: [...pendingMetrics], style: pendingStyle }
+          : diagram
+      )));
+      resetDiagramPicker();
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from('diagram_configs')
+      .insert({
+        user_id: currentUserId,
+        metrics: [...pendingMetrics],
+        style: pendingStyle,
+      })
+      .select('id')
+      .single();
+
+    if (error || !data) return;
+
     setDiagramConfigs((prev) => [
       ...prev,
       {
-        id: crypto.randomUUID(),
+        id: data.id,
         metrics: [...pendingMetrics],
         style: pendingStyle,
       },
     ]);
-    setPendingMetrics([]);
-    setPendingStyle('bar');
-    setShowDiagramPicker(false);
+    resetDiagramPicker();
   }
 
-  function removeDiagram(id: string) {
+  async function removeDiagram(id: string) {
+    if (!currentUserId) return;
+    const supabase = createClient();
+    const { error } = await supabase
+      .from('diagram_configs')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', currentUserId);
+    if (error) return;
+
     setDiagramConfigs((prev) => prev.filter((diagram) => diagram.id !== id));
+    if (editingDiagramId === id) {
+      resetDiagramPicker();
+    }
+  }
+
+  function editDiagram(diagram: DiagramConfig) {
+    setEditingDiagramId(diagram.id);
+    setPendingMetrics([...diagram.metrics]);
+    setPendingStyle(diagram.style);
+    setShowDiagramPicker(true);
+  }
+
+  function openNewDiagramPicker() {
+    setEditingDiagramId(null);
+    setPendingMetrics([]);
+    setPendingStyle('bar');
+    setShowDiagramPicker(true);
   }
 
   return (
@@ -360,9 +462,16 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
                         </span>
                       ))}
                       <span className="px-2.5 py-1 text-xs rounded-full border border-gray-200 text-gray-500 bg-white">
-                        {diagram.style.charAt(0).toUpperCase() + diagram.style.slice(1)}
+                        {DIAGRAM_STYLE_LABELS[diagram.style]}
                       </span>
                     </div>
+                    <button
+                      onClick={() => editDiagram(diagram)}
+                      className="p-1.5 rounded-md text-gray-400 hover:text-green-600 hover:bg-green-50 transition-colors"
+                      aria-label="Edit diagram"
+                    >
+                      <Pencil className="w-4 h-4" />
+                    </button>
                     <button
                       onClick={() => removeDiagram(diagram.id)}
                       className="p-1.5 rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
@@ -376,7 +485,7 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
               ))}
 
               <button
-                onClick={() => setShowDiagramPicker(true)}
+                onClick={openNewDiagramPicker}
                 className="w-full h-24 rounded-full border-2 border-dashed border-gray-300 bg-gray-100/90 hover:bg-gray-100 transition-colors flex items-center justify-center text-gray-500"
               >
                 <Plus className="w-7 h-7" />
@@ -392,13 +501,11 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
             >
               <div className="w-full max-w-lg bg-white rounded-xl shadow-xl border border-gray-100 p-5">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-semibold text-gray-900">Add Diagram</h3>
+                  <h3 className="text-lg font-semibold text-gray-900">
+                    {editingDiagramId ? 'Edit Diagram' : 'Add Diagram'}
+                  </h3>
                   <button
-                    onClick={() => {
-                      setShowDiagramPicker(false);
-                      setPendingMetrics([]);
-                      setPendingStyle('bar');
-                    }}
+                    onClick={resetDiagramPicker}
                     className="p-1 rounded text-gray-400 hover:bg-gray-100"
                     aria-label="Close diagram picker"
                   >
@@ -435,19 +542,17 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
                     onChange={(e) => setPendingStyle(e.target.value as DiagramStyle)}
                     className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
                   >
-                    <option value="bar">Bar</option>
-                    <option value="line">Line</option>
-                    <option value="area">Area</option>
+                    <option value="bar">{DIAGRAM_STYLE_LABELS.bar}</option>
+                    <option value="line">{DIAGRAM_STYLE_LABELS.line}</option>
+                    <option value="area">{DIAGRAM_STYLE_LABELS.area}</option>
+                    <option value="stackedBar">{DIAGRAM_STYLE_LABELS.stackedBar}</option>
+                    <option value="stepLine">{DIAGRAM_STYLE_LABELS.stepLine}</option>
                   </select>
                 </div>
 
                 <div className="flex justify-end gap-2">
                   <button
-                    onClick={() => {
-                      setShowDiagramPicker(false);
-                      setPendingMetrics([]);
-                      setPendingStyle('bar');
-                    }}
+                    onClick={resetDiagramPicker}
                     className="px-4 py-2 text-sm rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50"
                   >
                     Cancel
@@ -457,7 +562,7 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
                     disabled={pendingMetrics.length === 0}
                     className="px-4 py-2 text-sm rounded-lg border border-green-600 bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    Add Diagram
+                    {editingDiagramId ? 'Save Diagram' : 'Add Diagram'}
                   </button>
                 </div>
               </div>

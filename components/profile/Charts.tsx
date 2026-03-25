@@ -20,7 +20,7 @@ interface MacroChartData {
 }
 
 export type DiagramMetric = 'calories' | 'water' | 'weight' | 'carbs' | 'fats' | 'protein';
-export type DiagramStyle = 'bar' | 'line' | 'area';
+export type DiagramStyle = 'bar' | 'line' | 'area' | 'stackedBar' | 'stepLine';
 
 export interface DiagramChartDataPoint {
   date: string;
@@ -232,6 +232,22 @@ export function CustomDiagramChart({
             />
           ))}
         </LineChart>
+      ) : style === 'stepLine' ? (
+        <LineChart data={data} margin={{ top: 5, right: 5, bottom: 5, left: -20 }}>
+          {sharedElements}
+          {metrics.map((metric) => (
+            <Line
+              key={metric}
+              type="stepAfter"
+              dataKey={metric}
+              name={DIAGRAM_METRIC_META[metric].label}
+              stroke={DIAGRAM_METRIC_META[metric].color}
+              strokeWidth={2}
+              dot={{ r: 2 }}
+              connectNulls
+            />
+          ))}
+        </LineChart>
       ) : style === 'area' ? (
         <AreaChart data={data} margin={{ top: 5, right: 5, bottom: 5, left: -20 }}>
           {sharedElements}
@@ -248,6 +264,20 @@ export function CustomDiagramChart({
             />
           ))}
         </AreaChart>
+      ) : style === 'stackedBar' ? (
+        <BarChart data={data} margin={{ top: 5, right: 5, bottom: 5, left: -20 }}>
+          {sharedElements}
+          {metrics.map((metric) => (
+            <Bar
+              key={metric}
+              dataKey={metric}
+              stackId="diagram-stack"
+              name={DIAGRAM_METRIC_META[metric].label}
+              fill={DIAGRAM_METRIC_META[metric].color}
+              radius={[4, 4, 0, 0]}
+            />
+          ))}
+        </BarChart>
       ) : (
         <BarChart data={data} margin={{ top: 5, right: 5, bottom: 5, left: -20 }}>
           {sharedElements}
