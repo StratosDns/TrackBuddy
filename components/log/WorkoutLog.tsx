@@ -363,9 +363,26 @@ export default function WorkoutLog({ date }: WorkoutLogProps) {
           )}
         </div>
 
-        <div className="rounded-xl border border-gray-200 p-4">
+        {editingLogId && (
+          <button
+            type="button"
+            className="fixed inset-0 z-40 bg-black/30"
+            aria-label="Close workout log editor"
+            onClick={cancelEditingWorkoutEntry}
+          />
+        )}
+        <div
+          className={`rounded-xl border border-gray-200 p-4 bg-white ${
+            editingLogId
+              ? 'fixed z-50 left-1/2 top-1/2 max-h-[90vh] w-[min(42rem,calc(100%-2rem))] -translate-x-1/2 -translate-y-1/2 overflow-y-auto shadow-xl'
+              : ''
+          }`}
+          role={editingLogId ? 'dialog' : undefined}
+          aria-modal={editingLogId ? true : undefined}
+          aria-label={editingLogId ? 'Edit workout log' : undefined}
+        >
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold text-gray-800">Set Logger</h3>
+            <h3 className="text-sm font-semibold text-gray-800">{editingLogId ? 'Edit Workout Log' : 'Set Logger'}</h3>
             <Button
               variant="secondary"
               size="sm"
