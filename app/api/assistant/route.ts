@@ -1,4 +1,6 @@
-const RELEVANT_TOPICS = [
+import { WORKOUT_KNOWLEDGE_SECTIONS } from '../../../lib/assistantKnowledgeBase';
+
+const BASE_RELEVANT_TOPICS = [
   'nutrition', 'macro', 'macros', 'calorie', 'calories', 'protein', 'carb', 'carbs', 'fat', 'fats', 'fiber',
   'meal', 'diet', 'cut', 'bulk', 'recomp', 'maintenance', 'hydrate', 'hydration', 'water', 'electrolyte', 'sodium',
   'supplement', 'supplements', 'creatine', 'whey', 'casein', 'caffeine', 'beta alanine', 'citrulline', 'omega-3', 'vitamin d',
@@ -11,6 +13,13 @@ const RELEVANT_TOPICS = [
   'body fat', 'waist', 'bmi', 'metabolism',
   'sports nutrition', 'pre workout', 'post workout', 'meal timing',
 ];
+
+const RELEVANT_TOPICS = Array.from(
+  new Set([
+    ...BASE_RELEVANT_TOPICS,
+    ...WORKOUT_KNOWLEDGE_SECTIONS.flatMap((section) => section.keywords),
+  ]),
+);
 
 function escapeRegexSpecialChars(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -29,8 +38,48 @@ function isRelevantQuestion(question: string): boolean {
   return hasAnyTopic(question, RELEVANT_TOPICS);
 }
 
+function getSummaryLine(content: string): string {
+  const summaryLine = content
+    .split('\n')
+    .find((line) => line.startsWith('Summary:'))
+    ?.replace('Summary:', '')
+    .trim();
+  return summaryLine ?? '';
+}
+
+function getKnowledgeExcerpt(content: string): string {
+  const normalized = content.replace(/\s+/g, ' ').trim();
+  if (normalized.length <= 450) return normalized;
+  return `${normalized.slice(0, 447)}...`;
+}
+
+function buildKnowledgeBaseReply(question: string): string | null {
+  const rankedMatches = WORKOUT_KNOWLEDGE_SECTIONS.map((section) => ({
+    section,
+    score: section.keywords.reduce((count, keyword) => (
+      hasTopic(question, keyword) ? count + 1 : count
+    ), 0),
+  }))
+    .filter((item) => item.score > 0)
+    .sort((a, b) => b.score - a.score);
+
+  if (rankedMatches.length === 0) return null;
+
+  const topMatches = rankedMatches.slice(0, 2);
+  const responseSections = topMatches.map(({ section }) => {
+    const summary = getSummaryLine(section.content);
+    const excerpt = getKnowledgeExcerpt(section.content.replace(/^Summary:\s*/m, ''));
+    const details = summary ? `${summary} ${excerpt}` : excerpt;
+    return `${section.title}: ${details}`;
+  });
+
+  return `Based on the TrackBuddy workout knowledge base, here's the most relevant guidance:\n\n${responseSections.join('\n\n')}\n\nIf you share your goal, schedule, equipment, and current level, I can turn this into a week-by-week plan.`;
+}
+
 function buildReply(question: string): string {
   const text = question;
+  const knowledgeBaseReply = buildKnowledgeBaseReply(text);
+  if (knowledgeBaseReply) return knowledgeBaseReply;
 
   if (hasAnyTopic(text, ['injury', 'pain'])) {
     return 'Train around pain by reducing load, range, or exercise variation temporarily, and avoid pushing through sharp or worsening symptoms. Use controlled tempo and stable technique while symptoms settle, then rebuild gradually. For persistent pain, neurological symptoms, or re-injury patterns, consult a qualified clinician or physical therapist.';
