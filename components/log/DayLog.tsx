@@ -47,7 +47,7 @@ export default function DayLog({ date }: Props) {
     setWeight(weightRes.data || null);
     setWeightInput(weightRes.data?.weight_kg?.toString() || '');
     setWater(waterRes.data || null);
-    setWaterInput(waterRes.data?.water_ml?.toString() || '');
+    setWaterInput(waterRes.data?.water_ml != null ? (waterRes.data.water_ml / 1000).toString() : '');
     setLoading(false);
   }, [date]);
 
@@ -69,16 +69,17 @@ export default function DayLog({ date }: Props) {
   }
 
   async function saveWater() {
-    const val = parseFloat(waterInput);
-    if (isNaN(val) || val <= 0) return;
+    const liters = parseFloat(waterInput);
+    if (isNaN(liters) || liters <= 0) return;
+    const waterMl = liters * 1000;
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
     if (water) {
-      await supabase.from('water_logs').update({ water_ml: val }).eq('id', water.id);
+      await supabase.from('water_logs').update({ water_ml: waterMl }).eq('id', water.id);
     } else {
-      await supabase.from('water_logs').insert({ user_id: user.id, date, water_ml: val });
+      await supabase.from('water_logs').insert({ user_id: user.id, date, water_ml: waterMl });
     }
     loadData();
   }
@@ -126,7 +127,7 @@ export default function DayLog({ date }: Props) {
             <Scale className="w-4 h-4 text-blue-500 shrink-0" />
             <input
               type="number"
-              step="0.1"
+              step="0.01"
               min="1"
               placeholder="Weight (kg)"
               value={weightInput}
@@ -142,9 +143,9 @@ export default function DayLog({ date }: Props) {
             <Droplets className="w-4 h-4 text-cyan-500 shrink-0" />
             <input
               type="number"
-              step="50"
-              min="50"
-              placeholder="Water (ml)"
+              step="0.01"
+              min="0.01"
+              placeholder="Water (L)"
               value={waterInput}
               onChange={(e) => setWaterInput(e.target.value)}
               className="w-28 text-sm outline-none text-gray-700 placeholder-gray-400"

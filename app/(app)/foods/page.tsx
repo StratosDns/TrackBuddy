@@ -39,8 +39,8 @@ const BASIS_LABELS: Record<InputBasis, string> = {
   per_piece: '1 piece',
 };
 
-function roundToOneDecimalPlace(value: number): number {
-  return Math.round(value * 10) / 10;
+function roundToTwoDecimalPlaces(value: number): number {
+  return Math.round(value * 100) / 100;
 }
 
 function FoodCard({
@@ -63,10 +63,10 @@ function FoodCard({
       ? BASIS_LABELS.per_100ml
       : BASIS_LABELS.per_100g;
   const displayFactor = hasPieceWeight ? parsedPieceWeight / 100 : 1;
-  const displayCalories = roundToOneDecimalPlace(food.calories_per_100g * displayFactor);
-  const displayProtein = roundToOneDecimalPlace(food.protein_per_100g * displayFactor);
-  const displayCarbs = roundToOneDecimalPlace(food.carbs_per_100g * displayFactor);
-  const displayFats = roundToOneDecimalPlace(food.fats_per_100g * displayFactor);
+  const displayCalories = roundToTwoDecimalPlaces(food.calories_per_100g * displayFactor);
+  const displayProtein = roundToTwoDecimalPlaces(food.protein_per_100g * displayFactor);
+  const displayCarbs = roundToTwoDecimalPlaces(food.carbs_per_100g * displayFactor);
+  const displayFats = roundToTwoDecimalPlaces(food.fats_per_100g * displayFactor);
   return (
     <div className="bg-white rounded-xl border border-gray-100 p-4 flex flex-col gap-3 hover:shadow-sm transition-shadow">
       <div className="flex items-start justify-between gap-2">
@@ -199,15 +199,15 @@ export default function FoodsPage() {
 
     const per100Factor = 100 / totals.weightG;
     const per100 = {
-      calories: roundToOneDecimalPlace(totals.calories * per100Factor),
-      protein: roundToOneDecimalPlace(totals.protein * per100Factor),
-      carbs: roundToOneDecimalPlace(totals.carbs * per100Factor),
-      fats: roundToOneDecimalPlace(totals.fats * per100Factor),
+      calories: roundToTwoDecimalPlaces(totals.calories * per100Factor),
+      protein: roundToTwoDecimalPlaces(totals.protein * per100Factor),
+      carbs: roundToTwoDecimalPlaces(totals.carbs * per100Factor),
+      fats: roundToTwoDecimalPlaces(totals.fats * per100Factor),
     };
 
     return {
       per100,
-      totalWeightG: roundToOneDecimalPlace(totals.weightG),
+      totalWeightG: roundToTwoDecimalPlaces(totals.weightG),
     };
   }, [ingredientOptions, ingredientRows]);
 
@@ -300,10 +300,10 @@ export default function FoodsPage() {
         return;
       }
       const normalizeFactor = 100 / parsedPieceWeight;
-      calories = roundToOneDecimalPlace(calories * normalizeFactor);
-      protein = roundToOneDecimalPlace(protein * normalizeFactor);
-      carbs = roundToOneDecimalPlace(carbs * normalizeFactor);
-      fats = roundToOneDecimalPlace(fats * normalizeFactor);
+      calories = roundToTwoDecimalPlaces(calories * normalizeFactor);
+      protein = roundToTwoDecimalPlaces(protein * normalizeFactor);
+      carbs = roundToTwoDecimalPlaces(carbs * normalizeFactor);
+      fats = roundToTwoDecimalPlaces(fats * normalizeFactor);
     }
 
     const persistedIngredientRows = useIngredientBuilder
@@ -311,7 +311,7 @@ export default function FoodsPage() {
           .map((row) => {
             const amountG = parseFloat(row.amountG);
             if (!row.foodId || Number.isNaN(amountG) || amountG <= 0) return null;
-            return { food_id: row.foodId, amount_g: roundToOneDecimalPlace(amountG) };
+            return { food_id: row.foodId, amount_g: roundToTwoDecimalPlaces(amountG) };
           })
           .filter((row): row is PersistedIngredientRow => row !== null)
       : null;
@@ -336,7 +336,7 @@ export default function FoodsPage() {
       ingredient_rows: persistedIngredientRows,
       input_basis: inputBasis,
       piece_weight_g: pieceWeightToPersist !== null
-        ? roundToOneDecimalPlace(pieceWeightToPersist)
+        ? roundToTwoDecimalPlaces(pieceWeightToPersist)
         : null,
     };
 
@@ -523,7 +523,7 @@ export default function FoodsPage() {
                   <Input
                     label="Weight of 1 piece (g)"
                     type="number"
-                    step="0.1"
+                    step="0.01"
                     min="0.1"
                     placeholder="e.g. 250"
                     value={pieceWeightG}
@@ -566,7 +566,7 @@ export default function FoodsPage() {
                           <label className="text-xs text-gray-600 mb-1 block">Amount (g)</label>
                           <input
                             type="number"
-                            step="0.1"
+                            step="0.01"
                             min="0.1"
                             value={row.amountG}
                             onChange={(e) =>
@@ -621,7 +621,7 @@ export default function FoodsPage() {
                 <Input
                   label={`Calories (per ${selectedBasisLabel})`}
                   type="number"
-                  step="0.1"
+                  step="0.01"
                   min="0"
                   placeholder="e.g. 165"
                   error={errors.calories_per_100g?.message}
@@ -631,7 +631,7 @@ export default function FoodsPage() {
                 <Input
                   label={`Protein (g per ${selectedBasisLabel})`}
                   type="number"
-                  step="0.1"
+                  step="0.01"
                   min="0"
                   placeholder="e.g. 31"
                   error={errors.protein_per_100g?.message}
@@ -641,7 +641,7 @@ export default function FoodsPage() {
                 <Input
                   label={`Carbs (g per ${selectedBasisLabel})`}
                   type="number"
-                  step="0.1"
+                  step="0.01"
                   min="0"
                   placeholder="e.g. 0"
                   error={errors.carbs_per_100g?.message}
@@ -651,7 +651,7 @@ export default function FoodsPage() {
                 <Input
                   label={`Fats (g per ${selectedBasisLabel})`}
                   type="number"
-                  step="0.1"
+                  step="0.01"
                   min="0"
                   placeholder="e.g. 3.6"
                   error={errors.fats_per_100g?.message}
@@ -846,12 +846,12 @@ function CopyFoodModal({ food, ingredientOptions, onSave, onCancel }: CopyFoodMo
     const per100Factor = 100 / totals.weightG;
     return {
       per100: {
-        calories: roundToOneDecimalPlace(totals.calories * per100Factor),
-        protein: roundToOneDecimalPlace(totals.protein * per100Factor),
-        carbs: roundToOneDecimalPlace(totals.carbs * per100Factor),
-        fats: roundToOneDecimalPlace(totals.fats * per100Factor),
+        calories: roundToTwoDecimalPlaces(totals.calories * per100Factor),
+        protein: roundToTwoDecimalPlaces(totals.protein * per100Factor),
+        carbs: roundToTwoDecimalPlaces(totals.carbs * per100Factor),
+        fats: roundToTwoDecimalPlaces(totals.fats * per100Factor),
       },
-      totalWeightG: roundToOneDecimalPlace(totals.weightG),
+      totalWeightG: roundToTwoDecimalPlaces(totals.weightG),
     };
   }, [ingredientOptions, ingredientRows]);
 
@@ -877,10 +877,10 @@ function CopyFoodModal({ food, ingredientOptions, onSave, onCancel }: CopyFoodMo
         return;
       }
       const normalizeFactor = 100 / parsedPieceWeight;
-      calories = roundToOneDecimalPlace(calories * normalizeFactor);
-      protein = roundToOneDecimalPlace(protein * normalizeFactor);
-      carbs = roundToOneDecimalPlace(carbs * normalizeFactor);
-      fats = roundToOneDecimalPlace(fats * normalizeFactor);
+      calories = roundToTwoDecimalPlaces(calories * normalizeFactor);
+      protein = roundToTwoDecimalPlaces(protein * normalizeFactor);
+      carbs = roundToTwoDecimalPlaces(carbs * normalizeFactor);
+      fats = roundToTwoDecimalPlaces(fats * normalizeFactor);
     }
 
     const persistedIngredientRows = useIngredientBuilder
@@ -888,7 +888,7 @@ function CopyFoodModal({ food, ingredientOptions, onSave, onCancel }: CopyFoodMo
           .map((row) => {
             const amountG = parseFloat(row.amountG);
             if (!row.foodId || Number.isNaN(amountG) || amountG <= 0) return null;
-            return { food_id: row.foodId, amount_g: roundToOneDecimalPlace(amountG) };
+            return { food_id: row.foodId, amount_g: roundToTwoDecimalPlaces(amountG) };
           })
           .filter((row): row is PersistedIngredientRow => row !== null)
       : null;
@@ -912,7 +912,7 @@ function CopyFoodModal({ food, ingredientOptions, onSave, onCancel }: CopyFoodMo
       ingredient_rows: persistedIngredientRows,
       input_basis: inputBasis,
       piece_weight_g: pieceWeightToPersist !== null
-        ? roundToOneDecimalPlace(pieceWeightToPersist)
+        ? roundToTwoDecimalPlaces(pieceWeightToPersist)
         : null,
     });
   }
@@ -962,7 +962,7 @@ function CopyFoodModal({ food, ingredientOptions, onSave, onCancel }: CopyFoodMo
             <Input
               label="Weight of 1 piece (g)"
               type="number"
-              step="0.1"
+              step="0.01"
               min="0.1"
               placeholder="e.g. 250"
               value={pieceWeightG}
@@ -1005,7 +1005,7 @@ function CopyFoodModal({ food, ingredientOptions, onSave, onCancel }: CopyFoodMo
                     <label className="text-xs text-gray-600 mb-1 block">Amount (g)</label>
                     <input
                       type="number"
-                      step="0.1"
+                      step="0.01"
                       min="0.1"
                       value={row.amountG}
                       onChange={(e) =>
@@ -1061,7 +1061,7 @@ function CopyFoodModal({ food, ingredientOptions, onSave, onCancel }: CopyFoodMo
             <Input
               label={`Calories (per ${selectedBasisLabel})`}
               type="number"
-              step="0.1"
+              step="0.01"
               min="0"
               error={errors.calories_per_100g?.message}
               {...register('calories_per_100g')}
@@ -1070,7 +1070,7 @@ function CopyFoodModal({ food, ingredientOptions, onSave, onCancel }: CopyFoodMo
             <Input
               label={`Protein (g per ${selectedBasisLabel})`}
               type="number"
-              step="0.1"
+              step="0.01"
               min="0"
               error={errors.protein_per_100g?.message}
               {...register('protein_per_100g')}
@@ -1079,7 +1079,7 @@ function CopyFoodModal({ food, ingredientOptions, onSave, onCancel }: CopyFoodMo
             <Input
               label={`Carbs (g per ${selectedBasisLabel})`}
               type="number"
-              step="0.1"
+              step="0.01"
               min="0"
               error={errors.carbs_per_100g?.message}
               {...register('carbs_per_100g')}
@@ -1088,7 +1088,7 @@ function CopyFoodModal({ food, ingredientOptions, onSave, onCancel }: CopyFoodMo
             <Input
               label={`Fats (g per ${selectedBasisLabel})`}
               type="number"
-              step="0.1"
+              step="0.01"
               min="0"
               error={errors.fats_per_100g?.message}
               {...register('fats_per_100g')}
