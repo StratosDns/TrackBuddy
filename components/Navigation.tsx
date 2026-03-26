@@ -4,8 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
-import { Calendar, BookOpen, User, Apple, LogOut, Menu, X, Users, Dumbbell } from 'lucide-react';
-import { useState } from 'react';
+import { Calendar, BookOpen, User, Apple, LogOut, Users, Dumbbell } from 'lucide-react';
 import { format } from 'date-fns';
 import { AppMode, MODE_COOKIE } from '@/lib/mode';
 
@@ -16,7 +15,6 @@ interface NavigationProps {
 export default function Navigation({ initialMode }: NavigationProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const [mobileOpen, setMobileOpen] = useState(false);
   const isOnGymRoute = pathname === '/gym' || pathname.startsWith('/gym/');
   const isGymMode = isOnGymRoute || initialMode === 'gym';
   const activeClasses = isGymMode ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700';
@@ -135,60 +133,8 @@ export default function Navigation({ initialMode }: NavigationProps) {
               }`}
             />
           </button>
-          <button
-            onClick={() => setMobileOpen(!mobileOpen)}
-            className="p-1.5 rounded-lg text-gray-600 hover:bg-gray-100"
-          >
-            {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-          </button>
         </div>
       </header>
-
-      {/* Mobile drawer */}
-      {mobileOpen && (
-        <div
-          className="md:hidden fixed inset-0 z-50 bg-black/40"
-          onClick={() => setMobileOpen(false)}
-        >
-          <div
-            className="bg-white w-64 h-full py-6 px-4 flex flex-col gap-2"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center gap-2 mb-6 px-2">
-              <div className={`w-8 h-8 ${iconBg} rounded-lg flex items-center justify-center`}>
-                <BrandIcon className="w-5 h-5 text-white" />
-              </div>
-              <span className="font-bold text-lg text-gray-900">TrackBuddy</span>
-            </div>
-
-            {navItems.map(({ href, label, icon: Icon }) => {
-              const active = pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
-              return (
-                <Link
-                  key={href}
-                  href={href}
-                  onClick={() => setMobileOpen(false)}
-                  className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors
-                    ${active ? activeClasses : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'}`}
-                >
-                  <Icon className="w-4 h-4 shrink-0" />
-                  {label}
-                </Link>
-              );
-            })}
-
-            <div className="mt-auto pt-2 border-t border-gray-100">
-              <button
-                onClick={handleSignOut}
-                className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 w-full transition-colors"
-              >
-                <LogOut className="w-4 h-4 shrink-0" />
-                Sign Out
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Mobile bottom nav */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-gray-200 flex">

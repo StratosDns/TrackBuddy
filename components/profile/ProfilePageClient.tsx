@@ -172,7 +172,7 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
     const weights: WeightLog[] = weightsRes.data || [];
     setWeightData(weights.map((w) => ({ date: w.date, weight: w.weight_kg })));
     const waters: WaterLog[] = waterRes.data || [];
-    setWaterData(waters.map((w) => ({ date: w.date, water: w.water_ml })));
+    setWaterData(waters.map((w) => ({ date: w.date, water: w.water_ml / 1000 })));
 
     if (mode === 'gym') {
       setMacroData([]);

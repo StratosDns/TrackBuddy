@@ -34,7 +34,7 @@ export interface DiagramChartDataPoint {
 
 export const DIAGRAM_METRIC_META: Record<DiagramMetric, { label: string; color: string; unit: string }> = {
   calories: { label: 'Calories', color: '#f97316', unit: 'kcal' },
-  water: { label: 'Water', color: '#06b6d4', unit: 'ml' },
+  water: { label: 'Water', color: '#06b6d4', unit: 'L' },
   weight: { label: 'Weight', color: '#3b82f6', unit: 'kg' },
   carbs: { label: 'Carbs', color: '#eab308', unit: 'g' },
   fats: { label: 'Fats', color: '#ef4444', unit: 'g' },

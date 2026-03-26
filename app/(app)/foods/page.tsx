@@ -40,7 +40,7 @@ const BASIS_LABELS: Record<InputBasis, string> = {
 };
 
 function roundToOneDecimalPlace(value: number): number {
-  return Math.round(value * 10) / 10;
+  return Math.round(value * 100) / 100;
 }
 
 function FoodCard({
@@ -523,7 +523,7 @@ export default function FoodsPage() {
                   <Input
                     label="Weight of 1 piece (g)"
                     type="number"
-                    step="0.1"
+                    step="0.01"
                     min="0.1"
                     placeholder="e.g. 250"
                     value={pieceWeightG}
@@ -566,7 +566,7 @@ export default function FoodsPage() {
                           <label className="text-xs text-gray-600 mb-1 block">Amount (g)</label>
                           <input
                             type="number"
-                            step="0.1"
+                            step="0.01"
                             min="0.1"
                             value={row.amountG}
                             onChange={(e) =>
@@ -621,7 +621,7 @@ export default function FoodsPage() {
                 <Input
                   label={`Calories (per ${selectedBasisLabel})`}
                   type="number"
-                  step="0.1"
+                  step="0.01"
                   min="0"
                   placeholder="e.g. 165"
                   error={errors.calories_per_100g?.message}
@@ -631,7 +631,7 @@ export default function FoodsPage() {
                 <Input
                   label={`Protein (g per ${selectedBasisLabel})`}
                   type="number"
-                  step="0.1"
+                  step="0.01"
                   min="0"
                   placeholder="e.g. 31"
                   error={errors.protein_per_100g?.message}
@@ -641,7 +641,7 @@ export default function FoodsPage() {
                 <Input
                   label={`Carbs (g per ${selectedBasisLabel})`}
                   type="number"
-                  step="0.1"
+                  step="0.01"
                   min="0"
                   placeholder="e.g. 0"
                   error={errors.carbs_per_100g?.message}
@@ -651,7 +651,7 @@ export default function FoodsPage() {
                 <Input
                   label={`Fats (g per ${selectedBasisLabel})`}
                   type="number"
-                  step="0.1"
+                  step="0.01"
                   min="0"
                   placeholder="e.g. 3.6"
                   error={errors.fats_per_100g?.message}
@@ -962,7 +962,7 @@ function CopyFoodModal({ food, ingredientOptions, onSave, onCancel }: CopyFoodMo
             <Input
               label="Weight of 1 piece (g)"
               type="number"
-              step="0.1"
+              step="0.01"
               min="0.1"
               placeholder="e.g. 250"
               value={pieceWeightG}
@@ -1005,7 +1005,7 @@ function CopyFoodModal({ food, ingredientOptions, onSave, onCancel }: CopyFoodMo
                     <label className="text-xs text-gray-600 mb-1 block">Amount (g)</label>
                     <input
                       type="number"
-                      step="0.1"
+                      step="0.01"
                       min="0.1"
                       value={row.amountG}
                       onChange={(e) =>
@@ -1061,7 +1061,7 @@ function CopyFoodModal({ food, ingredientOptions, onSave, onCancel }: CopyFoodMo
             <Input
               label={`Calories (per ${selectedBasisLabel})`}
               type="number"
-              step="0.1"
+              step="0.01"
               min="0"
               error={errors.calories_per_100g?.message}
               {...register('calories_per_100g')}
@@ -1070,7 +1070,7 @@ function CopyFoodModal({ food, ingredientOptions, onSave, onCancel }: CopyFoodMo
             <Input
               label={`Protein (g per ${selectedBasisLabel})`}
               type="number"
-              step="0.1"
+              step="0.01"
               min="0"
               error={errors.protein_per_100g?.message}
               {...register('protein_per_100g')}
@@ -1079,7 +1079,7 @@ function CopyFoodModal({ food, ingredientOptions, onSave, onCancel }: CopyFoodMo
             <Input
               label={`Carbs (g per ${selectedBasisLabel})`}
               type="number"
-              step="0.1"
+              step="0.01"
               min="0"
               error={errors.carbs_per_100g?.message}
               {...register('carbs_per_100g')}
@@ -1088,7 +1088,7 @@ function CopyFoodModal({ food, ingredientOptions, onSave, onCancel }: CopyFoodMo
             <Input
               label={`Fats (g per ${selectedBasisLabel})`}
               type="number"
-              step="0.1"
+              step="0.01"
               min="0"
               error={errors.fats_per_100g?.message}
               {...register('fats_per_100g')}

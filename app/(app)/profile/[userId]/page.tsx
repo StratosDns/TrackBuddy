@@ -235,7 +235,7 @@ export default function FriendProfilePage({
     setMacroData(macros);
 
     const waters: WaterLog[] = waterRes.data || [];
-    setWaterData(waters.map((w) => ({ date: w.date, water: w.water_ml })));
+    setWaterData(waters.map((w) => ({ date: w.date, water: w.water_ml / 1000 })));
 
     if (typeof window !== 'undefined') {
       const localStorageKey = buildFriendDiagramStorageKey(userId);
