@@ -11,7 +11,7 @@ const RELEVANT_TOPICS = [
   'nutrition', 'macro', 'macros', 'calorie', 'calories', 'protein', 'carb', 'carbs', 'fat', 'fats', 'fiber',
   'meal', 'diet', 'cut', 'bulk', 'hydrate', 'hydration', 'water', 'supplement', 'creatine', 'whey',
   'gym', 'workout', 'exercise', 'train', 'training', 'lift', 'strength', 'muscle', 'bench', 'squat', 'deadlift',
-  'cardio', 'warmup', 'recovery', 'rest day', 'sets', 'reps',
+  'cardio', 'warmup', 'recovery', 'rest day', 'sets', 'reps', 'back',
 ];
 
 function isRelevantQuestion(question: string): boolean {
@@ -36,6 +36,9 @@ function buildReply(question: string): string {
   }
   if (text.includes('cardio')) {
     return 'For general health and fat loss support, do 2–4 cardio sessions weekly while keeping resistance training as your priority.';
+  }
+  if (text.includes('back')) {
+    return 'For a beginner back day, start with lat pulldowns, seated cable rows, dumbbell rows, and back extensions. Do 2–3 sets of 8–12 reps each with controlled form and stop 1–2 reps before failure.';
   }
   if (text.includes('bench') || text.includes('squat') || text.includes('deadlift') || text.includes('lift')) {
     return 'Focus on controlled form first, then progress gradually by adding small amounts of weight or reps week to week.';
