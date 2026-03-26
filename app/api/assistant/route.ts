@@ -11,7 +11,7 @@ const RELEVANT_TOPICS = [
   'nutrition', 'macro', 'macros', 'calorie', 'calories', 'protein', 'carb', 'carbs', 'fat', 'fats', 'fiber',
   'meal', 'diet', 'cut', 'bulk', 'hydrate', 'hydration', 'water', 'supplement', 'creatine', 'whey',
   'gym', 'workout', 'exercise', 'train', 'training', 'lift', 'strength', 'muscle', 'bench', 'squat', 'deadlift',
-  'cardio', 'warmup', 'recovery', 'rest day', 'sets', 'reps', 'back', 'chest', 'shoulder', 'arm', 'leg',
+  'cardio', 'warmup', 'recovery', 'rest day', 'sets', 'reps', 'back',
 ];
 
 function isRelevantQuestion(question: string): boolean {
