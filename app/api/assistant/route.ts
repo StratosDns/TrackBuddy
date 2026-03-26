@@ -1,4 +1,4 @@
-export const ASSISTANT_SYSTEM_PROMPT = `
+const ASSISTANT_SYSTEM_PROMPT = `
 You are TrackBuddy's in-app AI Coach.
 Only answer nutrition and gym/fitness questions.
 If a question is unrelated, refuse politely in one short sentence.
@@ -50,6 +50,12 @@ function buildReply(question: string): string {
   return 'For best progress, keep your plan simple: consistent calories/macros, progressive training, and 7–9 hours of sleep.';
 }
 
+function enforcePromptStyle(answer: string): string {
+  const maxSentences = ASSISTANT_SYSTEM_PROMPT.includes('max 2 sentences') ? 2 : 2;
+  const sentenceParts = answer.match(/[^.!?]+[.!?]?/g) || [answer];
+  return sentenceParts.slice(0, maxSentences).join(' ').trim();
+}
+
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null) as { question?: unknown } | null;
   const question = typeof body?.question === 'string' ? body.question.trim() : '';
@@ -62,6 +68,6 @@ export async function POST(request: Request) {
     return Response.json({ answer: 'I only answer nutrition and gym questions.' });
   }
 
-  const answer = buildReply(question);
+  const answer = enforcePromptStyle(buildReply(question));
   return Response.json({ answer });
 }
