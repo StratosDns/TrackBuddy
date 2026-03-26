@@ -11,7 +11,7 @@ import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import MacroBadge from '@/components/ui/MacroBadge';
 import Input from '@/components/ui/Input';
-import { Plus, Trash2, Scale, Droplets, Search, Globe, Pencil, Check, X } from 'lucide-react';
+import { Plus, Trash2, Scale, Droplets, Search, Globe, Pencil, X } from 'lucide-react';
 
 interface Props {
   date: string;
@@ -244,6 +244,10 @@ function MealSection({ meal, logs, macros, foods, date, onDelete, onUpdate, onAd
   const [editingLogId, setEditingLogId] = useState<string | null>(null);
   const [editingAmountInput, setEditingAmountInput] = useState('');
   const [editingAmountUnit, setEditingAmountUnit] = useState<'grams' | 'pieces'>('grams');
+  const editingLog = useMemo(
+    () => logs.find((log) => log.id === editingLogId) || null,
+    [logs, editingLogId]
+  );
   const filteredMyFoods = useMemo(() => {
     const trimmed = myFoodSearch.trim().toLowerCase();
     return foods.filter((food) => !trimmed || food.name.toLowerCase().includes(trimmed));
@@ -651,32 +655,13 @@ function MealSection({ meal, logs, macros, foods, date, onDelete, onUpdate, onAd
                     </div>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
-                    {editingLogId === log.id ? (
-                      <>
-                        <button
-                          onClick={cancelEdit}
-                          className="text-gray-400 hover:text-gray-600 transition-colors p-1"
-                          title="Cancel edit"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => saveEdit(log)}
-                          className="text-gray-400 hover:text-green-600 transition-colors p-1"
-                          title="Save edit"
-                        >
-                          <Check className="w-4 h-4" />
-                        </button>
-                      </>
-                    ) : (
-                      <button
-                        onClick={() => beginEdit(log)}
-                        className="text-gray-400 hover:text-blue-500 transition-colors p-1"
-                        title="Edit amount"
-                      >
-                        <Pencil className="w-4 h-4" />
-                      </button>
-                    )}
+                    <button
+                      onClick={() => beginEdit(log)}
+                      className="text-gray-400 hover:text-blue-500 transition-colors p-1"
+                      title="Edit amount"
+                    >
+                      <Pencil className="w-4 h-4" />
+                    </button>
                     <button
                       onClick={() => onDelete(log.id)}
                       className="text-gray-400 hover:text-red-500 transition-colors p-1"
@@ -691,44 +676,6 @@ function MealSection({ meal, logs, macros, foods, date, onDelete, onUpdate, onAd
                     </div>
                   )}
                 </div>
-                {editingLogId === log.id && (
-                  <div className="mt-2 flex flex-col gap-2">
-                    {getEditablePieceWeight(log.food) !== null ? (
-                      <div className="flex gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setEditingAmountUnit('pieces')}
-                          className={`px-3 py-1 rounded-lg border text-xs transition-colors ${
-                            editingAmountUnit === 'pieces'
-                              ? 'bg-green-50 border-green-300 text-green-700'
-                              : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
-                          }`}
-                        >
-                          Pieces
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setEditingAmountUnit('grams')}
-                          className={`px-3 py-1 rounded-lg border text-xs transition-colors ${
-                            editingAmountUnit === 'grams'
-                              ? 'bg-green-50 border-green-300 text-green-700'
-                              : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
-                          }`}
-                        >
-                          Grams
-                        </button>
-                      </div>
-                    ) : null}
-                    <input
-                      type="number"
-                      min={editingAmountUnit === 'pieces' ? PIECES_MIN : GRAMS_MIN}
-                      step={editingAmountUnit === 'pieces' ? PIECES_STEP : GRAMS_STEP}
-                      value={editingAmountInput}
-                      onChange={(e) => setEditingAmountInput(e.target.value)}
-                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none focus:border-green-500 focus:ring-2 focus:ring-green-200"
-                    />
-                  </div>
-                )}
                 {shouldShowIngredients && (
                   <div className="mt-2 ml-1 pl-3 border-l-2 border-gray-100 flex flex-col gap-1">
                     <p className="text-xs font-medium text-gray-500">Ingredients</p>
@@ -752,6 +699,80 @@ function MealSection({ meal, logs, macros, foods, date, onDelete, onUpdate, onAd
             );
           })}
         </div>
+      )}
+      {editingLog && (
+        <>
+          <button
+            type="button"
+            className="fixed inset-0 z-40 bg-black/30"
+            aria-label="Close food entry editor"
+            onClick={cancelEdit}
+          />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div
+              className="w-full max-w-md rounded-xl border border-gray-100 bg-white p-4 shadow-xl"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Edit food entry"
+            >
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <h4 className="text-sm font-semibold text-gray-900 truncate">Edit {editingLog.food?.name}</h4>
+                <button
+                  onClick={cancelEdit}
+                  className="text-gray-400 hover:text-gray-600 transition-colors p-1"
+                  title="Cancel edit"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="flex flex-col gap-3">
+                {getEditablePieceWeight(editingLog.food) !== null ? (
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setEditingAmountUnit('pieces')}
+                      className={`px-3 py-1 rounded-lg border text-xs transition-colors ${
+                        editingAmountUnit === 'pieces'
+                          ? 'bg-green-50 border-green-300 text-green-700'
+                          : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
+                      }`}
+                    >
+                      Pieces
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditingAmountUnit('grams')}
+                      className={`px-3 py-1 rounded-lg border text-xs transition-colors ${
+                        editingAmountUnit === 'grams'
+                          ? 'bg-green-50 border-green-300 text-green-700'
+                          : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
+                      }`}
+                    >
+                      Grams
+                    </button>
+                  </div>
+                ) : null}
+                <input
+                  type="number"
+                  min={editingAmountUnit === 'pieces' ? PIECES_MIN : GRAMS_MIN}
+                  step={editingAmountUnit === 'pieces' ? PIECES_STEP : GRAMS_STEP}
+                  value={editingAmountInput}
+                  onChange={(e) => setEditingAmountInput(e.target.value)}
+                  aria-label="Edit food amount"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none focus:border-green-500 focus:ring-2 focus:ring-green-200"
+                />
+                <div className="flex justify-end gap-2">
+                  <Button variant="secondary" size="sm" onClick={cancelEdit}>
+                    Cancel
+                  </Button>
+                  <Button size="sm" onClick={() => saveEdit(editingLog)}>
+                    Save
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
       )}
     </Card>
   );
