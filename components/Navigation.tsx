@@ -17,7 +17,7 @@ export default function Navigation({ initialMode }: NavigationProps) {
   const router = useRouter();
   const isOnGymRoute = pathname === '/gym' || pathname.startsWith('/gym/');
   const isGymMode = isOnGymRoute || initialMode === 'gym';
-  const activeClasses = isGymMode ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700';
+  const activeClasses = isGymMode ? 'text-red-700' : 'text-green-700';
   const mobileActiveClasses = isGymMode ? 'text-red-600' : 'text-green-600';
   const iconBg = isGymMode ? 'bg-red-600' : 'bg-green-600';
   const BrandIcon = isGymMode ? Dumbbell : Apple;
@@ -59,10 +59,10 @@ export default function Navigation({ initialMode }: NavigationProps) {
     <>
       {/* Desktop top bar */}
       <header
-        className={`hidden md:flex fixed top-0 left-0 right-0 z-40 border-b px-6 py-3 items-center gap-6 ${
+        className={`hidden md:flex fixed top-0 left-0 right-0 z-40 px-6 py-5 items-center gap-6 ${
           isGymMode
-            ? 'bg-gradient-to-b from-red-100 to-red-50 border-red-200'
-            : 'bg-gradient-to-b from-green-100 to-green-50 border-green-200'
+            ? 'bg-gradient-to-b from-red-100 to-red-50'
+            : 'bg-gradient-to-b from-green-100 to-green-50'
         }`}
       >
         <div className="flex items-center gap-2 shrink-0">
@@ -79,8 +79,8 @@ export default function Navigation({ initialMode }: NavigationProps) {
               <Link
                 key={href}
                 href={href}
-                className={`text-center px-2 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  active ? activeClasses : 'text-gray-700 hover:bg-white/70 hover:text-gray-900'
+                className={`text-center px-2 py-2 text-sm font-medium transition-colors ${
+                  active ? activeClasses : 'text-gray-700 hover:text-gray-900'
                 }`}
               >
                 {label}
