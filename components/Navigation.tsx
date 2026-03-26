@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
-import { Calendar, BookOpen, User, Apple, LogOut, Users, Dumbbell } from 'lucide-react';
+import { Calendar, BookOpen, User, Apple, Users, Dumbbell } from 'lucide-react';
 import { format } from 'date-fns';
 import { AppMode, MODE_COOKIE } from '@/lib/mode';
 
@@ -57,56 +57,61 @@ export default function Navigation({ initialMode }: NavigationProps) {
 
   return (
     <>
-      {/* Desktop sidebar */}
-      <aside className="hidden md:flex flex-col w-64 bg-white border-r border-gray-200 min-h-screen py-6 px-4 gap-2 fixed top-0 left-0 z-30">
-        <div className="flex items-center gap-2 mb-6 px-2">
+      {/* Desktop top bar */}
+      <header
+        className={`hidden md:flex fixed top-0 left-0 right-0 z-40 border-b px-6 py-3 items-center gap-6 ${
+          isGymMode
+            ? 'bg-gradient-to-b from-red-100 to-red-50 border-red-200'
+            : 'bg-gradient-to-b from-green-100 to-green-50 border-green-200'
+        }`}
+      >
+        <div className="flex items-center gap-2 shrink-0">
           <div className={`w-8 h-8 ${iconBg} rounded-lg flex items-center justify-center`}>
             <BrandIcon className="w-5 h-5 text-white" />
           </div>
           <span className="font-bold text-lg text-gray-900">TrackBuddy</span>
-          <button
-            onClick={toggleWorld}
-            title={`Switch to ${isGymMode ? 'diet' : 'gym'} world`}
-            aria-label={`Switch to ${isGymMode ? 'diet' : 'gym'} world`}
-            role="switch"
-            aria-checked={isGymMode}
-            className={`ml-auto relative inline-flex h-8 w-16 items-center rounded-full p-1 transition-colors ${
-              isGymMode ? 'bg-red-100' : 'bg-green-100'
-            }`}
-          >
-            <span
-              className={`absolute left-1 top-1 h-6 w-6 rounded-full bg-white shadow-sm transition-transform duration-200 ease-out ${
-                isGymMode ? 'translate-x-8' : ''
-              }`}
-            />
-          </button>
         </div>
 
-        {navItems.map(({ href, label, icon: Icon }) => {
-          const active = pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
-          return (
-            <Link
-              key={href}
-              href={href}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors
-                ${active ? activeClasses : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'}`}
-            >
-              <Icon className="w-4 h-4 shrink-0" />
-              {label}
-            </Link>
-          );
-        })}
-
-        <div className="mt-auto pt-2 border-t border-gray-100">
+        <nav className="flex-1 grid grid-flow-col auto-cols-fr items-center">
+          {navItems.map(({ href, label }) => {
+            const active = pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
+            return (
+              <Link
+                key={href}
+                href={href}
+                className={`text-center px-2 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  active ? activeClasses : 'text-gray-700 hover:bg-white/70 hover:text-gray-900'
+                }`}
+              >
+                {label}
+              </Link>
+            );
+          })}
           <button
             onClick={handleSignOut}
-            className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 w-full transition-colors"
+            className="text-center px-2 py-2 rounded-lg text-sm font-medium text-red-700 hover:bg-red-100/80 transition-colors"
           >
-            <LogOut className="w-4 h-4 shrink-0" />
             Sign Out
           </button>
-        </div>
-      </aside>
+        </nav>
+
+        <button
+          onClick={toggleWorld}
+          title={`Switch to ${isGymMode ? 'diet' : 'gym'} world`}
+          aria-label={`Switch to ${isGymMode ? 'diet' : 'gym'} world`}
+          role="switch"
+          aria-checked={isGymMode}
+          className={`relative inline-flex h-8 w-16 items-center rounded-full p-1 transition-colors shrink-0 ${
+            isGymMode ? 'bg-red-100' : 'bg-green-100'
+          }`}
+        >
+          <span
+            className={`absolute left-1 top-1 h-6 w-6 rounded-full bg-white shadow-sm transition-transform duration-200 ease-out ${
+              isGymMode ? 'translate-x-8' : ''
+            }`}
+          />
+        </button>
+      </header>
 
       {/* Mobile top bar */}
       <header className="md:hidden fixed top-0 left-0 right-0 z-40 bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between">

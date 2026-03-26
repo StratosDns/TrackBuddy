@@ -10,8 +10,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <div className="flex min-h-screen">
       <Navigation initialMode={mode} />
-      {/* Main content - offset for desktop sidebar */}
-      <main className="flex-1 md:ml-64 pt-16 md:pt-0 pb-20 md:pb-0 overflow-x-hidden">
+      {/* Main content - offset for top bars */}
+      <main className="flex-1 pt-16 md:pt-20 pb-20 md:pb-0 overflow-x-hidden">
         <div className="max-w-4xl mx-auto px-4 py-6">
           {children}
         </div>
