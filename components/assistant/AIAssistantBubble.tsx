@@ -13,7 +13,7 @@ export default function AIAssistantBubble() {
   const [question, setQuestion] = useState('');
   const [loading, setLoading] = useState(false);
   const [messages, setMessages] = useState<AssistantMessage[]>([
-    { role: 'assistant', content: 'Ask me a quick nutrition or gym question.' },
+    { role: 'assistant', content: 'Ask me any fitness, nutrition, training, recovery, or supplement question.' },
   ]);
 
   async function askAssistant() {
@@ -33,7 +33,7 @@ export default function AIAssistantBubble() {
       const payload = await response.json();
       const answer = typeof payload.answer === 'string'
         ? payload.answer
-        : 'I can help with nutrition and gym basics only.';
+        : 'I can help with fitness, nutrition, training, and recovery guidance.';
       setMessages((prev) => [...prev, { role: 'assistant', content: answer }]);
     } catch {
       setMessages((prev) => [
@@ -79,7 +79,7 @@ export default function AIAssistantBubble() {
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') askAssistant(); }}
-              placeholder="Ask nutrition/gym..."
+               placeholder="Ask any fitness question..."
               className="flex-1 rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs outline-none focus:ring-2 focus:ring-green-200 focus:border-green-500"
             />
             <button
