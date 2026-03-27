@@ -482,7 +482,7 @@ export default function GymDashboard({ targetUserId }: { targetUserId?: string }
                     typeof diagram.axisDomain?.min === 'number' ? diagram.axisDomain.min : 'auto',
                     typeof diagram.axisDomain?.max === 'number' ? diagram.axisDomain.max : 'auto',
                   ];
-                  const lineSeriesCount = showMovingAverage ? 2 : 1;
+                  const shouldShowLegend = showMovingAverage;
                   return (
                     <div key={diagram.id} className="border border-gray-100 rounded-2xl p-4 shadow-sm">
                       <div className="flex items-center justify-between gap-3 mb-3">
@@ -535,7 +535,7 @@ export default function GymDashboard({ targetUserId }: { targetUserId?: string }
                                       : [timelineFormatter(diagram.metric, Number(v)), 'Value']
                                   }
                                 />
-                                  {lineSeriesCount > 1 && <Legend />}
+                                  {shouldShowLegend && <Legend />}
                                 <Line
                                   type="monotone"
                                   dataKey="metric"

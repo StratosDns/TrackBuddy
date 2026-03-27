@@ -243,7 +243,7 @@ export function MacroChart({
   }
 
   const noneVisible = !visibleMacros.protein && !visibleMacros.carbs && !visibleMacros.fats;
-  const visibleMacroCount = Number(visibleMacros.protein) + Number(visibleMacros.carbs) + Number(visibleMacros.fats);
+  const hasMultipleVisibleMacros = Number(visibleMacros.protein) + Number(visibleMacros.carbs) + Number(visibleMacros.fats) > 1;
   if (noneVisible) {
     return (
       <div className="flex items-center justify-center h-40 text-sm text-gray-400">
@@ -266,7 +266,7 @@ export function MacroChart({
           labelFormatter={(l) => format(parseISO(l as string), 'MMM d, yyyy')}
           formatter={(v, name) => [`${v}g`, name]}
         />
-        {visibleMacroCount > 1 && <Legend />}
+        {hasMultipleVisibleMacros && <Legend />}
         {visibleMacros.protein && typeof targets?.protein === 'number' && targets.protein > 0 && (
           <ReferenceLine y={targets.protein} stroke={DIAGRAM_METRIC_META.protein.color} strokeDasharray="4 4" label={{ value: 'Protein target', position: 'right', fill: DIAGRAM_METRIC_META.protein.color, fontSize: 10 }} />
         )}
