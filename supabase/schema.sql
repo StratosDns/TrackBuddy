@@ -256,12 +256,18 @@ create table if not exists public.diagram_configs (
   metrics text[] not null default '{}'::text[],
   style text not null check (style in ('bar', 'line', 'area', 'stackedBar', 'stepLine')),
   metric_units jsonb not null default '{}'::jsonb,
+  axis_min double precision,
+  axis_max double precision,
   created_at timestamptz default now() not null,
   updated_at timestamptz default now() not null
 );
 
 alter table public.diagram_configs
   add column if not exists metric_units jsonb not null default '{}'::jsonb;
+alter table public.diagram_configs
+  add column if not exists axis_min double precision;
+alter table public.diagram_configs
+  add column if not exists axis_max double precision;
 
 alter table public.diagram_configs enable row level security;
 

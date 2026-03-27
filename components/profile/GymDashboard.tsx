@@ -45,6 +45,17 @@ interface GymDiagramConfig {
   exerciseName: string;
   metric: TimelineMetric;
   style: ChartType;
+  axisDomain?: { min?: number; max?: number };
+}
+
+function normalizeAxisValue(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+function parseAxisInput(value: string): number | null {
+  if (!value.trim()) return null;
+  const parsed = Number(value.trim());
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function generateDiagramId(): string {
@@ -109,7 +120,13 @@ export default function GymDashboard({ targetUserId }: { targetUserId?: string }
         && Boolean(diagram.exerciseName)
         && VALID_METRICS.has(diagram.metric)
         && VALID_CHART_STYLES.has(diagram.style)
-      ));
+      )).map((diagram) => ({
+        ...diagram,
+        axisDomain: {
+          min: normalizeAxisValue(diagram.axisDomain?.min),
+          max: normalizeAxisValue(diagram.axisDomain?.max),
+        },
+      }));
     } catch {
       return [];
     }
@@ -119,6 +136,8 @@ export default function GymDashboard({ targetUserId }: { targetUserId?: string }
   const [pendingExercise, setPendingExercise] = useState('');
   const [pendingMetric, setPendingMetric] = useState<TimelineMetric>(DEFAULT_TIMELINE_METRIC);
   const [pendingStyle, setPendingStyle] = useState<ChartType>(DEFAULT_CHART_TYPE);
+  const [pendingAxisMin, setPendingAxisMin] = useState('');
+  const [pendingAxisMax, setPendingAxisMax] = useState('');
 
   useEffect(() => {
     async function loadGymData() {
@@ -243,6 +262,8 @@ export default function GymDashboard({ targetUserId }: { targetUserId?: string }
     setPendingExercise(defaultExercise);
     setPendingMetric(DEFAULT_TIMELINE_METRIC);
     setPendingStyle(DEFAULT_CHART_TYPE);
+    setPendingAxisMin('');
+    setPendingAxisMax('');
     setShowDiagramPicker(false);
   }
 
@@ -251,6 +272,8 @@ export default function GymDashboard({ targetUserId }: { targetUserId?: string }
     setPendingExercise(defaultExercise);
     setPendingMetric(DEFAULT_TIMELINE_METRIC);
     setPendingStyle(DEFAULT_CHART_TYPE);
+    setPendingAxisMin('');
+    setPendingAxisMax('');
     setShowDiagramPicker(true);
   }
 
@@ -259,15 +282,30 @@ export default function GymDashboard({ targetUserId }: { targetUserId?: string }
     setPendingExercise(diagram.exerciseName);
     setPendingMetric(diagram.metric);
     setPendingStyle(diagram.style);
+    setPendingAxisMin(
+      typeof diagram.axisDomain?.min === 'number' ? String(diagram.axisDomain.min) : ''
+    );
+    setPendingAxisMax(
+      typeof diagram.axisDomain?.max === 'number' ? String(diagram.axisDomain.max) : ''
+    );
     setShowDiagramPicker(true);
   }
 
   function saveDiagram() {
     if (!pendingExercise) return;
+    let axisMin = parseAxisInput(pendingAxisMin);
+    let axisMax = parseAxisInput(pendingAxisMax);
+    if (axisMin !== null && axisMax !== null && axisMin > axisMax) {
+      [axisMin, axisMax] = [axisMax, axisMin];
+    }
+    const axisDomain = {
+      min: axisMin ?? undefined,
+      max: axisMax ?? undefined,
+    };
     if (editingDiagramId) {
       setDiagramConfigs((prev) => prev.map((diagram) => (
         diagram.id === editingDiagramId
-          ? { ...diagram, exerciseName: pendingExercise, metric: pendingMetric, style: pendingStyle }
+          ? { ...diagram, exerciseName: pendingExercise, metric: pendingMetric, style: pendingStyle, axisDomain }
           : diagram
       )));
       resetDiagramPicker();
@@ -278,6 +316,7 @@ export default function GymDashboard({ targetUserId }: { targetUserId?: string }
       exerciseName: pendingExercise,
       metric: pendingMetric,
       style: pendingStyle,
+      axisDomain,
     }]);
     resetDiagramPicker();
   }
@@ -439,6 +478,11 @@ export default function GymDashboard({ targetUserId }: { targetUserId?: string }
               <>
                 {diagramConfigs.map((diagram) => {
                   const diagramPoints = getDiagramPoints(diagram.exerciseName, diagram.metric);
+                  const yAxisDomain: [number | 'auto', number | 'auto'] = [
+                    typeof diagram.axisDomain?.min === 'number' ? diagram.axisDomain.min : 'auto',
+                    typeof diagram.axisDomain?.max === 'number' ? diagram.axisDomain.max : 'auto',
+                  ];
+                  const shouldShowLegend = showMovingAverage;
                   return (
                     <div key={diagram.id} className="border border-gray-100 rounded-2xl p-4 shadow-sm">
                       <div className="flex items-center justify-between gap-3 mb-3">
@@ -479,10 +523,10 @@ export default function GymDashboard({ targetUserId }: { targetUserId?: string }
                         ) : (
                           <ResponsiveContainer width="100%" height="100%">
                             {diagram.style === 'line' ? (
-                              <LineChart data={diagramPoints} margin={{ top: 5, right: 5, bottom: 5, left: -20 }}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="#fee2e2" />
-                                <XAxis dataKey="date" tickFormatter={(v) => format(parseISO(v), 'MMM d')} tick={{ fontSize: 11 }} />
-                                <YAxis tick={{ fontSize: 11 }} />
+                                <LineChart data={diagramPoints} margin={{ top: 5, right: 5, bottom: 5, left: -20 }}>
+                                  <CartesianGrid strokeDasharray="3 3" stroke="#fee2e2" />
+                                  <XAxis dataKey="date" tickFormatter={(v) => format(parseISO(v), 'MMM d')} tick={{ fontSize: 11 }} />
+                                  <YAxis tick={{ fontSize: 11 }} domain={yAxisDomain} />
                                 <Tooltip
                                   labelFormatter={(l) => format(parseISO(l as string), 'MMM d, yyyy')}
                                   formatter={(v, name) =>
@@ -491,7 +535,7 @@ export default function GymDashboard({ targetUserId }: { targetUserId?: string }
                                       : [timelineFormatter(diagram.metric, Number(v)), 'Value']
                                   }
                                 />
-                                <Legend />
+                                  {shouldShowLegend && <Legend />}
                                 <Line
                                   type="monotone"
                                   dataKey="metric"
@@ -514,10 +558,10 @@ export default function GymDashboard({ targetUserId }: { targetUserId?: string }
                                 )}
                               </LineChart>
                             ) : (
-                              <BarChart data={diagramPoints} margin={{ top: 5, right: 5, bottom: 5, left: -20 }}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="#fee2e2" />
-                                <XAxis dataKey="date" tickFormatter={(v) => format(parseISO(v), 'MMM d')} tick={{ fontSize: 11 }} />
-                                <YAxis tick={{ fontSize: 11 }} />
+                                <BarChart data={diagramPoints} margin={{ top: 5, right: 5, bottom: 5, left: -20 }}>
+                                  <CartesianGrid strokeDasharray="3 3" stroke="#fee2e2" />
+                                  <XAxis dataKey="date" tickFormatter={(v) => format(parseISO(v), 'MMM d')} tick={{ fontSize: 11 }} />
+                                  <YAxis tick={{ fontSize: 11 }} domain={yAxisDomain} />
                                 <Tooltip
                                   labelFormatter={(l) => format(parseISO(l as string), 'MMM d, yyyy')}
                                   formatter={(v) => [timelineFormatter(diagram.metric, Number(v)), 'Value']}
@@ -627,6 +671,32 @@ export default function GymDashboard({ targetUserId }: { targetUserId?: string }
                     <BarChart3 className="w-4 h-4" />
                     Bar
                   </button>
+                </div>
+              </div>
+
+              <div className="mb-5">
+                <p className="text-sm font-medium text-gray-700 mb-2">Y-axis range (optional)</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="flex items-center justify-between gap-3 px-3 py-2 rounded-xl border border-gray-200 bg-gray-50">
+                    <span className="text-sm text-gray-700">Min</span>
+                    <input
+                      type="number"
+                      value={pendingAxisMin}
+                      onChange={(e) => setPendingAxisMin(e.target.value)}
+                      className="w-24 px-2 py-1 border border-gray-200 rounded-lg text-xs bg-white"
+                      placeholder="auto"
+                    />
+                  </label>
+                  <label className="flex items-center justify-between gap-3 px-3 py-2 rounded-xl border border-gray-200 bg-gray-50">
+                    <span className="text-sm text-gray-700">Max</span>
+                    <input
+                      type="number"
+                      value={pendingAxisMax}
+                      onChange={(e) => setPendingAxisMax(e.target.value)}
+                      className="w-24 px-2 py-1 border border-gray-200 rounded-lg text-xs bg-white"
+                      placeholder="auto"
+                    />
+                  </label>
                 </div>
               </div>
 

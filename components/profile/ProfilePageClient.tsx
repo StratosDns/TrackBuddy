@@ -11,6 +11,7 @@ import {
   DiagramMetric,
   DiagramStyle,
   DiagramMetricUnits,
+  DiagramAxisDomain,
   DIAGRAM_METRIC_META,
   DIAGRAM_METRIC_UNIT_OPTIONS,
   getDiagramMetricUnit,
@@ -32,6 +33,7 @@ interface DiagramConfig {
   metrics: DiagramMetric[];
   style: DiagramStyle;
   metricUnits: DiagramMetricUnits;
+  axisDomain: DiagramAxisDomain;
 }
 
 const DIAGRAM_METRICS: DiagramMetric[] = ['calories', 'water', 'weight', 'carbs', 'fats', 'protein'];
@@ -55,6 +57,18 @@ interface DiagramConfigRow {
   metrics: string[];
   style: string;
   metric_units?: unknown;
+  axis_min?: unknown;
+  axis_max?: unknown;
+}
+
+function normalizeAxisValue(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+function parseAxisInput(value: string): number | null {
+  if (!value.trim()) return null;
+  const parsed = Number(value.trim());
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function getDefaultDiagramRange(today: string) {
@@ -84,6 +98,8 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
   const [pendingMetrics, setPendingMetrics] = useState<DiagramMetric[]>([]);
   const [pendingStyle, setPendingStyle] = useState<DiagramStyle>('bar');
   const [pendingMetricUnits, setPendingMetricUnits] = useState<DiagramMetricUnits>({});
+  const [pendingAxisMin, setPendingAxisMin] = useState('');
+  const [pendingAxisMax, setPendingAxisMax] = useState('');
   const [editingDiagramId, setEditingDiagramId] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [targetCaloriesInput, setTargetCaloriesInput] = useState(String(DEFAULT_TARGET_CALORIES));
@@ -101,6 +117,8 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
     setPendingMetrics([]);
     setPendingStyle('bar');
     setPendingMetricUnits({});
+    setPendingAxisMin('');
+    setPendingAxisMax('');
     setEditingDiagramId(null);
     setShowDiagramPicker(false);
   }, []);
@@ -201,7 +219,7 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
         .order('date'),
       supabase
         .from('diagram_configs')
-        .select('id, metrics, style, metric_units')
+        .select('id, metrics, style, metric_units, axis_min, axis_max')
         .eq('user_id', user.id)
         .order('created_at'),
       supabase
@@ -229,6 +247,10 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
         metrics: (row.metrics || []).filter((metric): metric is DiagramMetric => validMetrics.has(metric as DiagramMetric)),
         style: validStyles.has(row.style as DiagramStyle) ? (row.style as DiagramStyle) : 'bar',
         metricUnits: normalizeDiagramMetricUnits(row.metric_units),
+        axisDomain: {
+          min: normalizeAxisValue(row.axis_min),
+          max: normalizeAxisValue(row.axis_max),
+        },
       }))
       .filter((row) => row.metrics.length > 0);
     setDiagramConfigs(normalizedDiagrams);
@@ -432,6 +454,7 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
   const targetProtein = profile?.target_protein_g ?? DEFAULT_TARGET_PROTEIN_G;
   const targetCarbs = profile?.target_carbs_g ?? DEFAULT_TARGET_CARBS_G;
   const targetFats = profile?.target_fats_g ?? DEFAULT_TARGET_FATS_G;
+  const targetWater = (profile?.target_water_ml ?? DEFAULT_TARGET_WATER_ML) / 1000;
   const macroTargetByKey: Record<string, number> = {
     protein: targetProtein,
     carbs: targetCarbs,
@@ -479,6 +502,15 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
     if (!currentUserId) return;
 
     const supabase = createClient();
+    let axisMin = parseAxisInput(pendingAxisMin);
+    let axisMax = parseAxisInput(pendingAxisMax);
+    if (axisMin !== null && axisMax !== null && axisMin > axisMax) {
+      [axisMin, axisMax] = [axisMax, axisMin];
+    }
+    const normalizedAxisDomain: DiagramAxisDomain = {
+      min: axisMin ?? undefined,
+      max: axisMax ?? undefined,
+    };
 
     if (editingDiagramId) {
       const { error } = await supabase
@@ -487,6 +519,8 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
           metrics: [...pendingMetrics],
           style: pendingStyle,
           metric_units: pendingMetricUnits,
+          axis_min: axisMin,
+          axis_max: axisMax,
         })
         .eq('id', editingDiagramId)
         .eq('user_id', currentUserId);
@@ -495,7 +529,13 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
 
       setDiagramConfigs((prev) => prev.map((diagram) => (
         diagram.id === editingDiagramId
-          ? { ...diagram, metrics: [...pendingMetrics], style: pendingStyle, metricUnits: pendingMetricUnits }
+          ? {
+            ...diagram,
+            metrics: [...pendingMetrics],
+            style: pendingStyle,
+            metricUnits: pendingMetricUnits,
+            axisDomain: normalizedAxisDomain,
+          }
           : diagram
       )));
       resetDiagramPicker();
@@ -509,8 +549,10 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
         metrics: [...pendingMetrics],
         style: pendingStyle,
         metric_units: pendingMetricUnits,
+        axis_min: axisMin,
+        axis_max: axisMax,
       })
-      .select('id, metric_units')
+      .select('id, metric_units, axis_min, axis_max')
       .single();
 
     if (error || !data) return;
@@ -522,6 +564,7 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
         metrics: [...pendingMetrics],
         style: pendingStyle,
         metricUnits: normalizeDiagramMetricUnits(data.metric_units ?? pendingMetricUnits),
+        axisDomain: normalizedAxisDomain,
       },
     ]);
     resetDiagramPicker();
@@ -548,6 +591,12 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
     setPendingMetrics([...diagram.metrics]);
     setPendingStyle(diagram.style);
     setPendingMetricUnits(diagram.metricUnits || {});
+    setPendingAxisMin(
+      typeof diagram.axisDomain?.min === 'number' ? String(diagram.axisDomain.min) : ''
+    );
+    setPendingAxisMax(
+      typeof diagram.axisDomain?.max === 'number' ? String(diagram.axisDomain.max) : ''
+    );
     setShowDiagramPicker(true);
   }
 
@@ -556,6 +605,8 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
     setPendingMetrics([]);
     setPendingStyle('bar');
     setPendingMetricUnits({});
+    setPendingAxisMin('');
+    setPendingAxisMax('');
     setShowDiagramPicker(true);
   }
 
@@ -874,7 +925,14 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
                     metrics={diagram.metrics}
                     style={diagram.style}
                     metricUnits={diagram.metricUnits}
-                    macroTargets={{ protein: targetProtein, carbs: targetCarbs, fats: targetFats }}
+                    axisDomain={diagram.axisDomain}
+                    macroTargets={{
+                      protein: targetProtein,
+                      carbs: targetCarbs,
+                      fats: targetFats,
+                      calories: targetCalories,
+                      water: targetWater,
+                    }}
                     showValueLabels={rangeDays <= 10}
                   />
                 </div>
@@ -969,6 +1027,32 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
                     <option value="stackedBar">{DIAGRAM_STYLE_LABELS.stackedBar}</option>
                     <option value="stepLine">{DIAGRAM_STYLE_LABELS.stepLine}</option>
                   </select>
+                </div>
+
+                <div className="mb-5">
+                  <p className="text-sm font-medium text-gray-700 mb-2">Y-axis range (optional)</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <label className="flex items-center justify-between gap-3 px-3 py-2 rounded-xl border border-gray-200 bg-gray-50">
+                      <span className="text-sm text-gray-700">Min</span>
+                      <input
+                        type="number"
+                        value={pendingAxisMin}
+                        onChange={(e) => setPendingAxisMin(e.target.value)}
+                        className="w-24 px-2 py-1 border border-gray-200 rounded-lg text-xs bg-white"
+                        placeholder="auto"
+                      />
+                    </label>
+                    <label className="flex items-center justify-between gap-3 px-3 py-2 rounded-xl border border-gray-200 bg-gray-50">
+                      <span className="text-sm text-gray-700">Max</span>
+                      <input
+                        type="number"
+                        value={pendingAxisMax}
+                        onChange={(e) => setPendingAxisMax(e.target.value)}
+                        className="w-24 px-2 py-1 border border-gray-200 rounded-lg text-xs bg-white"
+                        placeholder="auto"
+                      />
+                    </label>
+                  </div>
                 </div>
 
                 <div className="flex justify-end gap-2">
