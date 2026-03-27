@@ -43,12 +43,12 @@ export const DIAGRAM_METRIC_META: Record<DiagramMetric, { label: string; color: 
 };
 
 export const DIAGRAM_METRIC_UNIT_OPTIONS: Record<DiagramMetric, string[]> = {
-  calories: ['kcal', 'kJ'],
-  water: ['L', 'ml', 'cL'],
+  calories: ['kcal', 'kJ', 'cal'],
+  water: ['L', 'ml', 'cL', 'cups', 'fl oz'],
   weight: ['kg', 'lb', 'g'],
-  carbs: ['g', 'oz'],
-  fats: ['g', 'oz'],
-  protein: ['g', 'oz'],
+  carbs: ['g', 'mg', 'kg', 'oz', 'lb'],
+  fats: ['g', 'mg', 'kg', 'oz', 'lb'],
+  protein: ['g', 'mg', 'kg', 'oz', 'lb'],
 };
 
 const L_TO_ML = 1000;
@@ -56,7 +56,13 @@ const L_TO_CL = 100;
 const KG_TO_G = 1000;
 const KG_TO_LB = 2.2046226218;
 const KCAL_TO_KJ = 4.184;
+const KCAL_TO_CAL = 1000;
 const G_TO_OZ = 0.0352739619;
+const G_TO_MG = 1000;
+const G_TO_KG = 0.001;
+const G_TO_LB = 0.00220462262;
+const L_TO_CUPS = 4.22675284;
+const L_TO_FL_OZ = 33.8140227;
 const VALUE_DECIMALS = 100;
 
 export interface VisibleMacros {
@@ -94,6 +100,8 @@ function convertDiagramValue(metric: DiagramMetric, value: number, units?: Diagr
   if (metric === 'water') {
     if (unit === 'ml') return value * L_TO_ML;
     if (unit === 'cL') return value * L_TO_CL;
+    if (unit === 'cups') return value * L_TO_CUPS;
+    if (unit === 'fl oz') return value * L_TO_FL_OZ;
     return value;
   }
   if (metric === 'weight') {
@@ -101,9 +109,13 @@ function convertDiagramValue(metric: DiagramMetric, value: number, units?: Diagr
     return unit === 'lb' ? value * KG_TO_LB : value;
   }
   if (metric === 'calories') {
+    if (unit === 'cal') return value * KCAL_TO_CAL;
     return unit === 'kJ' ? value * KCAL_TO_KJ : value;
   }
   if (metric === 'carbs' || metric === 'fats' || metric === 'protein') {
+    if (unit === 'mg') return value * G_TO_MG;
+    if (unit === 'kg') return value * G_TO_KG;
+    if (unit === 'lb') return value * G_TO_LB;
     return unit === 'oz' ? value * G_TO_OZ : value;
   }
   return value;

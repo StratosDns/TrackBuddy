@@ -63,12 +63,6 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
   const [draftName, setDraftName] = useState('');
   const [savingName, setSavingName] = useState(false);
 
-  // Date range state
-  const range = DEFAULT_RANGE_DAYS;
-  const [useCustomRange, setUseCustomRange] = useState(false);
-  const [customStart, setCustomStart] = useState('');
-  const [customEnd, setCustomEnd] = useState('');
-
   // Chart data
   const [weightData, setWeightData] = useState<{ date: string; weight: number }[]>([]);
   const [waterData, setWaterData] = useState<{ date: string; water: number }[]>([]);
@@ -88,7 +82,7 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
   const [targetProteinInput, setTargetProteinInput] = useState(String(DEFAULT_TARGET_PROTEIN_G));
   const [targetCarbsInput, setTargetCarbsInput] = useState(String(DEFAULT_TARGET_CARBS_G));
   const [targetFatsInput, setTargetFatsInput] = useState(String(DEFAULT_TARGET_FATS_G));
-  const [showTargetEditor, setShowTargetEditor] = useState(false);
+  const [diagramRanges, setDiagramRanges] = useState<Record<string, { start: string; end: string }>>({});
   const [ageInput, setAgeInput] = useState('');
   const [heightInput, setHeightInput] = useState('');
   const [displayWeightKg, setDisplayWeightKg] = useState<number | null>(null);
@@ -172,42 +166,22 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
       setFriendVisibility(nextVisibility);
     }
 
-    let startDate: string;
-    let endDate: string;
-    if (useCustomRange && customStart && customEnd) {
-      startDate = customStart;
-      endDate = customEnd;
-      // Validate order
-      if (isAfter(parseISO(startDate), parseISO(endDate))) {
-        [startDate, endDate] = [endDate, startDate];
-      }
-    } else {
-      startDate = format(subDays(new Date(), range - 1), 'yyyy-MM-dd');
-      endDate = format(new Date(), 'yyyy-MM-dd');
-    }
-
     const todayDate = format(new Date(), 'yyyy-MM-dd');
     const [logsRes, weightsRes, waterRes, diagramsRes, todayWeightRes, latestWeightRes] = await Promise.all([
       supabase
         .from('food_logs')
         .select('*, food:foods(*)')
         .eq('user_id', user.id)
-        .gte('date', startDate)
-        .lte('date', endDate)
         .order('date'),
       supabase
         .from('weight_logs')
         .select('*')
         .eq('user_id', user.id)
-        .gte('date', startDate)
-        .lte('date', endDate)
         .order('date'),
       supabase
         .from('water_logs')
         .select('*')
         .eq('user_id', user.id)
-        .gte('date', startDate)
-        .lte('date', endDate)
         .order('date'),
       supabase
         .from('diagram_configs')
@@ -242,6 +216,15 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
       }))
       .filter((row) => row.metrics.length > 0);
     setDiagramConfigs(normalizedDiagrams);
+    setDiagramRanges((prev) => {
+      const defaultEnd = format(new Date(), 'yyyy-MM-dd');
+      const defaultStart = format(subDays(new Date(), DEFAULT_RANGE_DAYS - 1), 'yyyy-MM-dd');
+      const next: Record<string, { start: string; end: string }> = {};
+      for (const diagram of normalizedDiagrams) {
+        next[diagram.id] = prev[diagram.id] || { start: defaultStart, end: defaultEnd };
+      }
+      return next;
+    });
 
     const weights: WeightLog[] = weightsRes.data || [];
     setWeightData(weights.map((w) => ({ date: w.date, weight: w.weight_kg })));
@@ -272,7 +255,7 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
       .map(([date, m]) => ({ date, ...m }));
 
     setMacroData(macros);
-  }, [range, useCustomRange, customStart, customEnd, mode]);
+  }, [mode]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -350,25 +333,22 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
     setFriendVisibility((prev) => ({ ...prev, [key]: !prev[key] }));
   }
 
-  // When switching to custom range, pre-fill with current preset
-  function handleCustomRangeToggle() {
-    if (!useCustomRange) {
-      setCustomEnd(format(new Date(), 'yyyy-MM-dd'));
-      setCustomStart(format(subDays(new Date(), range - 1), 'yyyy-MM-dd'));
-    }
-    setUseCustomRange((v) => !v);
-  }
-
   const today = format(new Date(), 'yyyy-MM-dd');
-  const effectiveRangeDays = useMemo(() => {
-    if (useCustomRange && customStart && customEnd) {
-      const start = parseISO(customStart);
-      const end = parseISO(customEnd);
-      return Math.abs(differenceInCalendarDays(end, start)) + 1;
-    }
-    return range;
-  }, [useCustomRange, customStart, customEnd, range]);
-  const showValueLabels = effectiveRangeDays <= 10;
+  function setDiagramRangeValue(id: string, key: 'start' | 'end', value: string) {
+    setDiagramRanges((prev) => {
+      const existing = prev[id] || {
+        start: format(subDays(new Date(), DEFAULT_RANGE_DAYS - 1), 'yyyy-MM-dd'),
+        end: today,
+      };
+      return {
+        ...prev,
+        [id]: {
+          ...existing,
+          [key]: value,
+        },
+      };
+    });
+  }
 
   const diagramData = useMemo<DiagramChartDataPoint[]>(() => {
     const byDate: Record<string, DiagramChartDataPoint> = {};
@@ -600,48 +580,6 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
         <GymDashboard />
       ) : (
         <>
-          {/* Date range controls */}
-          <div className="flex flex-col gap-3">
-            <div className="flex gap-2 flex-wrap items-center">
-              <button
-                onClick={handleCustomRangeToggle}
-                className={`px-4 py-1.5 text-sm rounded-xl font-medium border shadow-sm transition-all
-                  ${useCustomRange
-                    ? 'bg-green-600 text-white border-green-600 shadow-green-200'
-                    : 'bg-white text-gray-600 border-gray-200 hover:border-green-400 hover:-translate-y-0.5'
-                  }`}
-              >
-                Custom Range
-              </button>
-            </div>
-
-            {useCustomRange && (
-              <div className="flex flex-wrap gap-3 items-end">
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs text-gray-500 font-medium">Start date</label>
-                  <input
-                    type="date"
-                    value={customStart}
-                    max={customEnd || today}
-                    onChange={(e) => setCustomStart(e.target.value)}
-                    className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-                  />
-                </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs text-gray-500 font-medium">End date</label>
-                  <input
-                    type="date"
-                    value={customEnd}
-                    min={customStart}
-                    max={today}
-                    onChange={(e) => setCustomEnd(e.target.value)}
-                    className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
               <div className="grid grid-cols-[1fr_auto] gap-4 items-center">
@@ -699,15 +637,10 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
                 ))}
               </div>
               <div className="mt-4 pt-3 border-t border-gray-100">
-                <button
-                  onClick={() => setShowTargetEditor((prev) => !prev)}
-                  className="px-3 py-1.5 text-xs rounded-lg border border-green-600 bg-green-600 text-white hover:bg-green-700"
-                >
-                  Set Targets
-                </button>
-                {showTargetEditor && (
-                  <div className="mt-3 flex flex-wrap items-center gap-2">
-                    <label htmlFor="target-water" className="text-xs font-medium text-gray-600">Water target</label>
+                <p className="text-xs uppercase tracking-wide text-gray-500 font-semibold mb-2">Targets</p>
+                <div className="space-y-2">
+                  <label htmlFor="target-water" className="flex items-center justify-between gap-3 text-xs text-gray-600">
+                    <span className="font-medium">Water</span>
                     <input
                       id="target-water"
                       type="number"
@@ -715,43 +648,49 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
                       step={0.1}
                       value={targetWaterInput}
                       onChange={(e) => setTargetWaterInput(e.target.value)}
-                      className="w-20 px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                      className="w-24 px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
                     />
-                    <label htmlFor="target-protein" className="text-xs font-medium text-gray-600">Protein</label>
+                  </label>
+                  <label htmlFor="target-protein" className="flex items-center justify-between gap-3 text-xs text-gray-600">
+                    <span className="font-medium">Protein</span>
                     <input
                       id="target-protein"
                       type="number"
                       min={1}
                       value={targetProteinInput}
                       onChange={(e) => setTargetProteinInput(e.target.value)}
-                      className="w-16 px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                      className="w-24 px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
                     />
-                    <label htmlFor="target-carbs" className="text-xs font-medium text-gray-600">Carbs</label>
+                  </label>
+                  <label htmlFor="target-carbs" className="flex items-center justify-between gap-3 text-xs text-gray-600">
+                    <span className="font-medium">Carbs</span>
                     <input
                       id="target-carbs"
                       type="number"
                       min={1}
                       value={targetCarbsInput}
                       onChange={(e) => setTargetCarbsInput(e.target.value)}
-                      className="w-16 px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                      className="w-24 px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
                     />
-                    <label htmlFor="target-fats" className="text-xs font-medium text-gray-600">Fats</label>
+                  </label>
+                  <label htmlFor="target-fats" className="flex items-center justify-between gap-3 text-xs text-gray-600">
+                    <span className="font-medium">Fats</span>
                     <input
                       id="target-fats"
                       type="number"
                       min={1}
                       value={targetFatsInput}
                       onChange={(e) => setTargetFatsInput(e.target.value)}
-                      className="w-16 px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                      className="w-24 px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
                     />
-                    <button
-                      onClick={saveMacroAndWaterTargets}
-                      className="px-3 py-1.5 text-xs rounded-lg border border-green-600 bg-green-600 text-white hover:bg-green-700"
-                    >
-                      Save all targets
-                    </button>
-                  </div>
-                )}
+                  </label>
+                </div>
+                <button
+                  onClick={saveMacroAndWaterTargets}
+                  className="mt-3 px-3 py-1.5 text-xs rounded-lg border border-green-600 bg-green-600 text-white hover:bg-green-700"
+                >
+                  Save targets
+                </button>
               </div>
             </div>
 
@@ -842,6 +781,24 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
           <Card title="Diagrams" className="rounded-2xl shadow-sm">
             <div className="flex flex-col gap-4">
               {diagramConfigs.map((diagram) => (
+                (() => {
+                  const fallbackRange = {
+                    start: format(subDays(new Date(), DEFAULT_RANGE_DAYS - 1), 'yyyy-MM-dd'),
+                    end: today,
+                  };
+                  const configuredRange = diagramRanges[diagram.id] || fallbackRange;
+                  let startDate = configuredRange.start || fallbackRange.start;
+                  let endDate = configuredRange.end || fallbackRange.end;
+                  if (isAfter(parseISO(startDate), parseISO(endDate))) {
+                    [startDate, endDate] = [endDate, startDate];
+                  }
+                  const chartDataForDiagram = diagramData.filter((point) => (
+                    point.date >= startDate && point.date <= endDate
+                  ));
+                  const rangeDays = Math.abs(
+                    differenceInCalendarDays(parseISO(endDate), parseISO(startDate))
+                  ) + 1;
+                  return (
                   <div key={diagram.id} className="border border-gray-100 rounded-2xl p-4 shadow-sm bg-white">
                   <div className="flex items-center justify-between gap-3 mb-3">
                     <div className="flex flex-wrap gap-2">
@@ -872,15 +829,40 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
                       <X className="w-4 h-4" />
                     </button>
                   </div>
+                  <div className="mb-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <label className="flex items-center justify-between gap-2 text-xs text-gray-600">
+                      <span className="font-medium">Start</span>
+                      <input
+                        type="date"
+                        value={configuredRange.start}
+                        max={configuredRange.end || today}
+                        onChange={(e) => setDiagramRangeValue(diagram.id, 'start', e.target.value)}
+                        className="px-2 py-1 border border-gray-200 rounded-md text-xs"
+                      />
+                    </label>
+                    <label className="flex items-center justify-between gap-2 text-xs text-gray-600">
+                      <span className="font-medium">End</span>
+                      <input
+                        type="date"
+                        value={configuredRange.end}
+                        min={configuredRange.start}
+                        max={today}
+                        onChange={(e) => setDiagramRangeValue(diagram.id, 'end', e.target.value)}
+                        className="px-2 py-1 border border-gray-200 rounded-md text-xs"
+                      />
+                    </label>
+                  </div>
                   <CustomDiagramChart
-                    data={diagramData}
+                    data={chartDataForDiagram}
                     metrics={diagram.metrics}
                     style={diagram.style}
                     metricUnits={diagram.metricUnits}
                     macroTargets={{ protein: targetProtein, carbs: targetCarbs, fats: targetFats }}
-                    showValueLabels={showValueLabels}
+                    showValueLabels={rangeDays <= 10}
                   />
                 </div>
+                );
+                })()
               ))}
 
               <button
