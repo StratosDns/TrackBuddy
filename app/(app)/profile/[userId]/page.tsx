@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { use } from 'react';
-import { subDays, format } from 'date-fns';
+import { subDays, format, parseISO, isAfter, differenceInCalendarDays } from 'date-fns';
 import { createClient } from '@/lib/supabase/client';
 import {
   Profile, Food, FoodLog, WeightLog, WaterLog, FriendshipStatus,
@@ -26,11 +26,8 @@ import Link from 'next/link';
 import { MODE_COOKIE, normalizeMode } from '@/lib/mode';
 import { normalizeFriendVisibility } from '@/lib/profileVisibility';
 
-const RANGES = [
-  { label: '7 Days', days: 7 },
-  { label: '14 Days', days: 14 },
-  { label: '30 Days', days: 30 },
-];
+const DEFAULT_RANGE_DAYS = 30;
+const DATA_FETCH_LOOKBACK_DAYS = 36500;
 
 interface DiagramConfig {
   id: string;
@@ -111,6 +108,14 @@ function isDiagramStyle(value: string): value is DiagramStyle {
   return DIAGRAM_STYLES.includes(value as DiagramStyle);
 }
 
+function getDefaultDiagramRange(today: string) {
+  const todayDate = parseISO(today);
+  return {
+    start: format(subDays(todayDate, DEFAULT_RANGE_DAYS - 1), 'yyyy-MM-dd'),
+    end: today,
+  };
+}
+
 export default function FriendProfilePage({
   params,
 }: {
@@ -127,16 +132,17 @@ export default function FriendProfilePage({
   const [iAmRequester, setIAmRequester] = useState(false);
 
   // Chart data (only loaded if friends)
-  const [range, setRange] = useState(30);
+  const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const mode = parseModeFromCookie();
   const [weightData, setWeightData] = useState<{ date: string; weight: number }[]>([]);
   const [waterData, setWaterData] = useState<{ date: string; water: number }[]>([]);
   const [macroData, setMacroData] = useState<{
     date: string; calories: number; protein: number; carbs: number; fats: number;
   }[]>([]);
-  const [todayLogs, setTodayLogs] = useState<(FoodLog & { food: Food })[]>([]);
+  const [selectedDateLogs, setSelectedDateLogs] = useState<(FoodLog & { food: Food })[]>([]);
   const [dataLoading, setDataLoading] = useState(false);
   const [diagramConfigs, setDiagramConfigs] = useState<DiagramConfig[]>([]);
+  const [diagramRanges, setDiagramRanges] = useState<Record<string, { start: string; end: string }>>({});
   const [showDiagramPicker, setShowDiagramPicker] = useState(false);
   const [pendingMetrics, setPendingMetrics] = useState<DiagramMetric[]>([]);
   const [pendingStyle, setPendingStyle] = useState<DiagramStyle>('bar');
@@ -210,37 +216,35 @@ export default function FriendProfilePage({
     if (friendshipStatus !== 'accepted' || mode !== 'diet') return;
     setDataLoading(true);
     const supabase = createClient();
-
-    const startDate = format(subDays(new Date(), range - 1), 'yyyy-MM-dd');
     const endDate = format(new Date(), 'yyyy-MM-dd');
-    const today = format(new Date(), 'yyyy-MM-dd');
+    const fetchStartDate = format(subDays(new Date(), DATA_FETCH_LOOKBACK_DAYS - 1), 'yyyy-MM-dd');
 
-    const [logsRes, weightsRes, todayRes, waterRes, diagramsRes] = await Promise.all([
+    const [logsRes, weightsRes, selectedDateRes, waterRes, diagramsRes] = await Promise.all([
       supabase
         .from('food_logs')
         .select('*, food:foods(*)')
         .eq('user_id', userId)
-        .gte('date', startDate)
+        .gte('date', fetchStartDate)
         .lte('date', endDate)
         .order('date'),
       supabase
         .from('weight_logs')
         .select('*')
         .eq('user_id', userId)
-        .gte('date', startDate)
+        .gte('date', fetchStartDate)
         .lte('date', endDate)
         .order('date'),
       supabase
         .from('food_logs')
         .select('*, food:foods(*)')
         .eq('user_id', userId)
-        .eq('date', today)
+        .eq('date', selectedDate)
         .order('meal_type'),
       supabase
         .from('water_logs')
         .select('*')
         .eq('user_id', userId)
-        .gte('date', startDate)
+        .gte('date', fetchStartDate)
         .lte('date', endDate)
         .order('date'),
       supabase
@@ -268,26 +272,61 @@ export default function FriendProfilePage({
     const waters: WaterLog[] = waterRes.data || [];
     setWaterData(waters.map((w) => ({ date: w.date, water: w.water_ml / 1000 })));
 
+    const normalizedDiagrams = normalizeDiagramConfigs(diagramsRes.data || []);
     if (typeof window !== 'undefined') {
       const localStorageKey = buildFriendDiagramStorageKey(userId);
       const rawLocal = window.localStorage.getItem(localStorageKey);
       if (rawLocal) {
         try {
-          setDiagramConfigs(normalizeDiagramConfigs(JSON.parse(rawLocal)));
+          const localDiagrams = normalizeDiagramConfigs(JSON.parse(rawLocal));
+          setDiagramConfigs(localDiagrams);
+          setDiagramRanges((prev) => {
+            const fallbackRange = getDefaultDiagramRange(endDate);
+            const next: Record<string, { start: string; end: string }> = {};
+            for (const diagram of localDiagrams) {
+              next[diagram.id] = prev[diagram.id] || fallbackRange;
+            }
+            return next;
+          });
         } catch {
           seedViewerDiagramConfigsFromFriend(diagramsRes.data || [], localStorageKey);
+          setDiagramRanges((prev) => {
+            const fallbackRange = getDefaultDiagramRange(endDate);
+            const next: Record<string, { start: string; end: string }> = {};
+            for (const diagram of normalizedDiagrams) {
+              next[diagram.id] = prev[diagram.id] || fallbackRange;
+            }
+            return next;
+          });
         }
       } else {
         seedViewerDiagramConfigsFromFriend(diagramsRes.data || [], localStorageKey);
+        setDiagramRanges((prev) => {
+          const fallbackRange = getDefaultDiagramRange(endDate);
+          const next: Record<string, { start: string; end: string }> = {};
+          for (const diagram of normalizedDiagrams) {
+            next[diagram.id] = prev[diagram.id] || fallbackRange;
+          }
+          return next;
+        });
       }
+    } else {
+      setDiagramConfigs(normalizedDiagrams);
+      setDiagramRanges((prev) => {
+        const fallbackRange = getDefaultDiagramRange(endDate);
+        const next: Record<string, { start: string; end: string }> = {};
+        for (const diagram of normalizedDiagrams) {
+          next[diagram.id] = prev[diagram.id] || fallbackRange;
+        }
+        return next;
+      });
     }
-
-    setTodayLogs(todayRes.data || []);
+    setSelectedDateLogs(selectedDateRes.data || []);
     setDataLoading(false);
   }
 
   useEffect(() => { loadProfileAndFriendship(); }, [userId]);
-  useEffect(() => { loadFriendDietData(); }, [userId, friendshipStatus, range, mode]);
+  useEffect(() => { loadFriendDietData(); }, [userId, friendshipStatus, selectedDate, mode]);
 
   const diagramData = useMemo<DiagramChartDataPoint[]>(() => {
     const byDate: Record<string, DiagramChartDataPoint> = {};
@@ -314,6 +353,39 @@ export default function FriendProfilePage({
     }
     return Object.values(byDate).sort((a, b) => a.date.localeCompare(b.date));
   }, [macroData, weightData, waterData]);
+  const diagramRenderData = useMemo(() => {
+    const fallbackRange = getDefaultDiagramRange(format(new Date(), 'yyyy-MM-dd'));
+    return diagramConfigs.map((diagram) => {
+      const configuredRange = diagramRanges[diagram.id] || fallbackRange;
+      let startDate = configuredRange.start || fallbackRange.start;
+      let endDate = configuredRange.end || fallbackRange.end;
+      if (isAfter(parseISO(startDate), parseISO(endDate))) {
+        [startDate, endDate] = [endDate, startDate];
+      }
+      const chartData = diagramData.filter((point) => point.date >= startDate && point.date <= endDate);
+      const rangeDays = Math.abs(differenceInCalendarDays(parseISO(endDate), parseISO(startDate))) + 1;
+      return {
+        diagram,
+        configuredRange,
+        chartData,
+        rangeDays,
+      };
+    });
+  }, [diagramConfigs, diagramRanges, diagramData]);
+
+  function setDiagramRangeValue(id: string, key: 'start' | 'end', value: string) {
+    setDiagramRanges((prev) => {
+      const fallbackRange = getDefaultDiagramRange(format(new Date(), 'yyyy-MM-dd'));
+      const existing = prev[id] || fallbackRange;
+      return {
+        ...prev,
+        [id]: {
+          ...existing,
+          [key]: value,
+        },
+      };
+    });
+  }
 
   function togglePendingMetric(metric: DiagramMetric) {
     setPendingMetrics((prev) => {
@@ -370,6 +442,14 @@ export default function FriendProfilePage({
       }];
     setDiagramConfigs(nextConfigs);
     persistDiagramConfigsToLocalStorage(nextConfigs);
+    setDiagramRanges((prev) => {
+      const fallbackRange = getDefaultDiagramRange(format(new Date(), 'yyyy-MM-dd'));
+      const next: Record<string, { start: string; end: string }> = {};
+      for (const diagram of nextConfigs) {
+        next[diagram.id] = prev[diagram.id] || fallbackRange;
+      }
+      return next;
+    });
     resetDiagramPicker();
   }
 
@@ -377,6 +457,11 @@ export default function FriendProfilePage({
     const nextConfigs = diagramConfigs.filter((diagram) => diagram.id !== id);
     setDiagramConfigs(nextConfigs);
     persistDiagramConfigsToLocalStorage(nextConfigs);
+    setDiagramRanges((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
     if (editingDiagramId === id) {
       resetDiagramPicker();
     }
@@ -420,7 +505,7 @@ export default function FriendProfilePage({
     setFriendshipStatus(null);
     setWeightData([]);
     setMacroData([]);
-    setTodayLogs([]);
+    setSelectedDateLogs([]);
   }
 
   if (profileLoading) {
@@ -447,7 +532,9 @@ export default function FriendProfilePage({
   const isPending = friendshipStatus === 'pending';
   const friendVisibility = normalizeFriendVisibility(profile.friend_visibility);
   const canSee = (key: string) => friendVisibility[key] !== false;
-  const showValueLabels = range <= 10;
+  const latestKnownWeight = weightData.length > 0 ? weightData[weightData.length - 1].weight : null;
+  const selectedMacro = macroData.find((point) => point.date === selectedDate) ?? null;
+  const selectedWeight = weightData.find((point) => point.date === selectedDate)?.weight ?? latestKnownWeight;
   const macroTargets = {
     protein: profile.target_protein_g ?? DEFAULT_TARGET_PROTEIN_G,
     carbs: profile.target_carbs_g ?? DEFAULT_TARGET_CARBS_G,
@@ -461,16 +548,53 @@ export default function FriendProfilePage({
     calories: canSee('calorie_target') ? (profile.target_calories ?? DEFAULT_TARGET_CALORIES) : undefined,
     water: canSee('water_target') ? waterTargetL : undefined,
   };
-  const latestKnownWeight = weightData.length > 0 ? weightData[weightData.length - 1].weight : null;
+  const selectedCalories = selectedMacro?.calories ?? 0;
+  const selectedCalorieTarget = profile.target_calories ?? DEFAULT_TARGET_CALORIES;
+  const selectedCalorieProgress = selectedCalorieTarget > 0
+    ? Math.min(selectedCalories / selectedCalorieTarget, 1)
+    : 0;
+  const selectedCaloriePercent = Math.round(selectedCalorieProgress * 100);
+  const circleRadius = 33;
+  const circleCircumference = 2 * Math.PI * circleRadius;
+  const circleDashOffset = circleCircumference * (1 - selectedCalorieProgress);
+  const selectedMacroTotal = selectedMacro
+    ? Math.max(selectedMacro.protein + selectedMacro.carbs + selectedMacro.fats, 1)
+    : 1;
+  const macroProgressItems = [
+    {
+      key: 'protein',
+      label: 'Protein',
+      value: selectedMacro?.protein ?? 0,
+      width: `${Math.min(((selectedMacro?.protein ?? 0) / selectedMacroTotal) * 100, 100)}%`,
+      color: 'bg-violet-500',
+      target: macroTargets.protein,
+    },
+    {
+      key: 'carbs',
+      label: 'Carbs',
+      value: selectedMacro?.carbs ?? 0,
+      width: `${Math.min(((selectedMacro?.carbs ?? 0) / selectedMacroTotal) * 100, 100)}%`,
+      color: 'bg-amber-500',
+      target: macroTargets.carbs,
+    },
+    {
+      key: 'fats',
+      label: 'Fats',
+      value: selectedMacro?.fats ?? 0,
+      width: `${Math.min(((selectedMacro?.fats ?? 0) / selectedMacroTotal) * 100, 100)}%`,
+      color: 'bg-rose-500',
+      target: macroTargets.fats,
+    },
+  ];
 
-  // Group today's logs by meal
+  // Group selected date logs by meal
   const mealGroups: Record<MealType, (FoodLog & { food: Food })[]> = {
     breakfast: [],
     lunch: [],
     snack: [],
     dinner: [],
   };
-  for (const log of todayLogs) {
+  for (const log of selectedDateLogs) {
     mealGroups[log.meal_type as MealType].push(log);
   }
 
@@ -570,21 +694,84 @@ export default function FriendProfilePage({
             <GymDashboard targetUserId={userId} />
           ) : (
             <>
-              {/* Range selector */}
-              <div className="flex gap-2 flex-wrap">
-                {RANGES.map(({ label, days }) => (
-                  <button
-                    key={days}
-                    onClick={() => setRange(days)}
-                    className={`px-4 py-1.5 text-sm rounded-xl font-medium border shadow-sm transition-all
-                      ${range === days
-                        ? 'bg-green-600 text-white border-green-600 shadow-green-200'
-                        : 'bg-white text-gray-600 border-gray-200 hover:border-green-400 hover:-translate-y-0.5'
-                      }`}
-                  >
-                    {label}
-                  </button>
-                ))}
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+                <div className="grid grid-cols-[1fr_auto] gap-4 items-center">
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-gray-500 font-semibold">Total calories</p>
+                    <p className="text-3xl font-bold text-gray-900 leading-tight">{selectedCalories} kcal</p>
+                    <p className="text-sm text-gray-500 mt-1">{selectedCaloriePercent}% of {selectedCalorieTarget} kcal target</p>
+                  </div>
+                  <div className="relative w-24 h-24">
+                    <svg className="w-24 h-24 -rotate-90" viewBox="0 0 80 80" aria-hidden="true">
+                      <circle cx="40" cy="40" r={circleRadius} stroke="#e5e7eb" strokeWidth="8" fill="none" />
+                      <circle
+                        cx="40"
+                        cy="40"
+                        r={circleRadius}
+                        stroke="#16a34a"
+                        strokeWidth="8"
+                        fill="none"
+                        strokeLinecap="round"
+                        strokeDasharray={circleCircumference}
+                        strokeDashoffset={circleDashOffset}
+                      />
+                    </svg>
+                    <div className="absolute inset-0 flex items-center justify-center text-sm font-semibold text-gray-700">
+                      {selectedCaloriePercent}%
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <label htmlFor="friend-selected-date" className="text-xs font-medium text-gray-600">Date</label>
+                  <input
+                    id="friend-selected-date"
+                    type="date"
+                    value={selectedDate}
+                    max={format(new Date(), 'yyyy-MM-dd')}
+                    onChange={(e) => setSelectedDate(e.target.value)}
+                    className="px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                  />
+                </div>
+                <div className="mt-4 flex flex-col gap-2">
+                  {macroProgressItems.map((item) => (
+                    <div key={item.key} className="grid grid-cols-[auto_1fr_auto] gap-2 items-center">
+                      <span className="text-xs text-gray-600 font-medium w-12">{item.label}</span>
+                      <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
+                        <div className={`h-full ${item.color}`} style={{ width: item.width }} />
+                      </div>
+                      <span className="text-xs text-gray-500 w-20 text-right">{item.value}g / {item.target}g</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-4 pt-3 border-t border-gray-100">
+                  <p className="text-xs uppercase tracking-wide text-gray-500 font-semibold mb-2">Targets</p>
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    {canSee('water_target') && (
+                      <div className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2">
+                        <p className="text-xs text-gray-500">Water</p>
+                        <p className="font-medium text-gray-900">{waterTargetL} L</p>
+                      </div>
+                    )}
+                    {canSee('macro_targets') && (
+                      <div className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2">
+                        <p className="text-xs text-gray-500">Protein</p>
+                        <p className="font-medium text-gray-900">{macroTargets.protein} g</p>
+                      </div>
+                    )}
+                    {canSee('macro_targets') && (
+                      <div className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2">
+                        <p className="text-xs text-gray-500">Carbs</p>
+                        <p className="font-medium text-gray-900">{macroTargets.carbs} g</p>
+                      </div>
+                    )}
+                    {canSee('macro_targets') && (
+                      <div className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2">
+                        <p className="text-xs text-gray-500">Fats</p>
+                        <p className="font-medium text-gray-900">{macroTargets.fats} g</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
 
               {dataLoading ? (
@@ -610,7 +797,7 @@ export default function FriendProfilePage({
                       {canSee('weight') && (
                         <div className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2">
                           <p className="text-xs text-gray-500">Latest weight</p>
-                          <p className="font-medium text-gray-900">{latestKnownWeight != null ? `${latestKnownWeight} kg` : '-'}</p>
+                          <p className="font-medium text-gray-900">{selectedWeight != null ? `${selectedWeight} kg` : '-'}</p>
                         </div>
                       )}
                       {canSee('calorie_target') && (
@@ -636,28 +823,28 @@ export default function FriendProfilePage({
                     </div>
                   </Card>
 
-                  {canSee('weight') && (
-                    <Card title="Weight Progress">
-                      <WeightChart data={weightData} showValueLabels={showValueLabels} />
+                    {canSee('weight') && (
+                      <Card title="Weight Progress">
+                      <WeightChart data={weightData} showValueLabels={false} />
+                      </Card>
+                    )}
+
+                    <Card title="Daily Calories">
+                    <CalorieChart data={macroData} showValueLabels={false} />
                     </Card>
-                  )}
 
-                  <Card title="Daily Calories">
-                    <CalorieChart data={macroData} showValueLabels={showValueLabels} />
-                  </Card>
-
-                  <Card title="Daily Macros (Protein / Carbs / Fats)">
-                    <MacroChart
-                      data={macroData}
-                      targets={canSee('macro_targets') ? macroTargets : undefined}
-                      showValueLabels={showValueLabels}
-                    />
-                  </Card>
+                    <Card title="Daily Macros (Protein / Carbs / Fats)">
+                      <MacroChart
+                        data={macroData}
+                        targets={canSee('macro_targets') ? macroTargets : undefined}
+                      showValueLabels={false}
+                      />
+                    </Card>
 
                   {canSee('diagrams') && (
                     <Card title="Custom Diagrams">
                       <div className="flex flex-col gap-4">
-                        {diagramConfigs.map((diagram) => (
+                        {diagramRenderData.map(({ diagram, configuredRange, chartData, rangeDays }) => (
                           <div key={diagram.id} className="border border-gray-100 rounded-2xl p-4 shadow-sm">
                             <div className="flex items-center justify-between gap-3 mb-3">
                               <div className="flex flex-wrap gap-2">
@@ -690,13 +877,36 @@ export default function FriendProfilePage({
                                 </button>
                               </div>
                             </div>
+                            <div className="mb-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                              <label className="flex items-center justify-between gap-2 text-xs text-gray-600">
+                                <span className="font-medium">Start</span>
+                                <input
+                                  type="date"
+                                  value={configuredRange.start}
+                                  max={configuredRange.end || format(new Date(), 'yyyy-MM-dd')}
+                                  onChange={(e) => setDiagramRangeValue(diagram.id, 'start', e.target.value)}
+                                  className="px-2 py-1 border border-gray-200 rounded-md text-xs"
+                                />
+                              </label>
+                              <label className="flex items-center justify-between gap-2 text-xs text-gray-600">
+                                <span className="font-medium">End</span>
+                                <input
+                                  type="date"
+                                  value={configuredRange.end}
+                                  min={configuredRange.start}
+                                  max={format(new Date(), 'yyyy-MM-dd')}
+                                  onChange={(e) => setDiagramRangeValue(diagram.id, 'end', e.target.value)}
+                                  className="px-2 py-1 border border-gray-200 rounded-md text-xs"
+                                />
+                              </label>
+                            </div>
                             <CustomDiagramChart
-                              data={diagramData}
+                              data={chartData}
                               metrics={diagram.metrics}
                               style={diagram.style}
                               axisDomain={diagram.axisDomain}
                               macroTargets={diagramTargets}
-                              showValueLabels={showValueLabels}
+                              showValueLabels={rangeDays <= 10}
                             />
                           </div>
                         ))}
@@ -711,11 +921,10 @@ export default function FriendProfilePage({
                     </Card>
                   )}
 
-                  {/* Today's food log */}
-                  <Card title={`Today's Food Log — ${format(new Date(), 'MMM d, yyyy')}`}>
-                    {todayLogs.length === 0 ? (
+                  <Card title={`Food Log — ${format(parseISO(selectedDate), 'MMM d, yyyy')}`}>
+                    {selectedDateLogs.length === 0 ? (
                       <p className="text-sm text-gray-400 text-center py-4">
-                        {displayName} has not logged any food today.
+                        {displayName} has not logged any food on this date.
                       </p>
                     ) : (
                       <div className="flex flex-col gap-4">

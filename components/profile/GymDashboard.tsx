@@ -17,12 +17,6 @@ type TimelineMetric = 'maxWeight' | 'totalVolume' | 'totalReps' | 'sets';
 const MIN_MOVING_AVERAGE_WINDOW = 2;
 const MAX_MOVING_AVERAGE_WINDOW = 10;
 
-const RANGE_PRESETS = [
-  { label: '7 Days', days: 7 },
-  { label: '14 Days', days: 14 },
-  { label: '30 Days', days: 30 },
-  { label: '90 Days', days: 90 },
-];
 const GYM_DIAGRAM_STORAGE_PREFIX = 'tb_gym_diagrams_';
 const CHART_STYLE_LABELS: Record<ChartType, string> = {
   line: 'Line',
@@ -99,14 +93,15 @@ function timelineFormatter(metric: TimelineMetric, value: number): string {
 }
 
 export default function GymDashboard({ targetUserId }: { targetUserId?: string }) {
+  const today = useMemo(() => format(new Date(), 'yyyy-MM-dd'), []);
+  const recommendedStart = useMemo(() => format(subDays(new Date(), 29), 'yyyy-MM-dd'), []);
   const storageKey = `${GYM_DIAGRAM_STORAGE_PREFIX}${targetUserId || 'self'}`;
   const [workoutLogs, setWorkoutLogs] = useState<WorkoutLog[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const [range, setRange] = useState(30);
-  const [useCustomRange, setUseCustomRange] = useState(false);
-  const [customStart, setCustomStart] = useState('');
-  const [customEnd, setCustomEnd] = useState('');
+  const [customStart, setCustomStart] = useState(recommendedStart);
+  const [customEnd, setCustomEnd] = useState(today);
+  const [selectedDay, setSelectedDay] = useState(today);
   const [showMovingAverage, setShowMovingAverage] = useState(true);
   const [movingAverageWindow, setMovingAverageWindow] = useState(3);
   const [diagramConfigs, setDiagramConfigs] = useState<GymDiagramConfig[]>(() => {
@@ -138,6 +133,13 @@ export default function GymDashboard({ targetUserId }: { targetUserId?: string }
   const [pendingStyle, setPendingStyle] = useState<ChartType>(DEFAULT_CHART_TYPE);
   const [pendingAxisMin, setPendingAxisMin] = useState('');
   const [pendingAxisMax, setPendingAxisMax] = useState('');
+  const selectedDayLabel = useMemo(() => {
+    try {
+      return format(parseISO(selectedDay), 'MMM d, yyyy');
+    } catch {
+      return selectedDay;
+    }
+  }, [selectedDay]);
 
   useEffect(() => {
     async function loadGymData() {
@@ -171,15 +173,15 @@ export default function GymDashboard({ targetUserId }: { targetUserId?: string }
     const grouped = new Map<string, WorkoutLog[]>();
     let startDate: string;
     let endDate: string;
-    if (useCustomRange && customStart && customEnd) {
+    if (customStart && customEnd) {
       startDate = customStart;
       endDate = customEnd;
       if (isAfter(parseISO(startDate), parseISO(endDate))) {
         [startDate, endDate] = [endDate, startDate];
       }
     } else {
-      startDate = format(subDays(new Date(), range - 1), 'yyyy-MM-dd');
-      endDate = format(new Date(), 'yyyy-MM-dd');
+      startDate = recommendedStart;
+      endDate = today;
     }
 
     const inRange = workoutLogs.filter((log) => log.date >= startDate && log.date <= endDate);
@@ -239,10 +241,10 @@ export default function GymDashboard({ targetUserId }: { targetUserId?: string }
     return dataByExercise;
   }, [
     workoutLogs,
-    range,
-    useCustomRange,
     customStart,
     customEnd,
+    recommendedStart,
+    today,
   ]);
 
   const timelineExercises = Object.keys(timelineData);
@@ -346,11 +348,10 @@ export default function GymDashboard({ targetUserId }: { targetUserId?: string }
     return points;
   }
 
-  const today = format(new Date(), 'yyyy-MM-dd');
-  const dayLogs = workoutLogs.filter((log) => log.date === today);
-  const totalSetsToday = dayLogs.reduce((sum, log) => sum + log.set_rows.length, 0);
-  const totalRepsToday = dayLogs.reduce((sum, log) => sum + log.set_rows.reduce((s, setRow) => s + setRow.reps, 0), 0);
-  const totalVolumeToday = dayLogs.reduce(
+  const dayLogs = workoutLogs.filter((log) => log.date === selectedDay);
+  const totalSetsForDay = dayLogs.reduce((sum, log) => sum + log.set_rows.length, 0);
+  const totalRepsForDay = dayLogs.reduce((sum, log) => sum + log.set_rows.reduce((s, setRow) => s + setRow.reps, 0), 0);
+  const totalVolumeForDay = dayLogs.reduce(
     (sum, log) => sum + log.set_rows.reduce((s, setRow) => s + (setRow.reps * setRow.weight_kg), 0),
     0
   );
@@ -360,74 +361,48 @@ export default function GymDashboard({ targetUserId }: { targetUserId?: string }
       <div className="flex flex-col gap-4">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div className={SUMMARY_CARD_CLASS}>
-            <p className="text-xs text-red-700 font-medium">Today Sets</p>
-            <p className="text-2xl font-bold text-red-600">{totalSetsToday}</p>
+            <p className="text-xs text-red-700 font-medium">Sets ({selectedDayLabel})</p>
+            <p className="text-2xl font-bold text-red-600">{totalSetsForDay}</p>
           </div>
           <div className={SUMMARY_CARD_CLASS}>
-            <p className="text-xs text-red-700 font-medium">Today Reps</p>
-            <p className="text-2xl font-bold text-red-600">{totalRepsToday}</p>
+            <p className="text-xs text-red-700 font-medium">Reps ({selectedDayLabel})</p>
+            <p className="text-2xl font-bold text-red-600">{totalRepsForDay}</p>
           </div>
           <div className={SUMMARY_CARD_CLASS}>
-            <p className="text-xs text-red-700 font-medium">Today Volume</p>
-            <p className="text-2xl font-bold text-red-600">{Math.round(totalVolumeToday)} kg</p>
+            <p className="text-xs text-red-700 font-medium">Volume ({selectedDayLabel})</p>
+            <p className="text-2xl font-bold text-red-600">{Math.round(totalVolumeForDay)} kg</p>
           </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
-            <p className="text-xs text-gray-500 font-medium mb-1">Range presets</p>
-            <div className="flex gap-2 flex-wrap">
-              {RANGE_PRESETS.map(({ label, days }) => (
-                <button
-                  key={days}
-                  onClick={() => { setRange(days); setUseCustomRange(false); }}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-medium border shadow-sm transition-all ${
-                    !useCustomRange && range === days
-                      ? 'bg-red-600 text-white border-red-600 shadow-red-200'
-                      : 'bg-white text-gray-600 border-gray-200 hover:border-red-300 hover:-translate-y-0.5'
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-              <button
-                onClick={() => {
-                  if (!useCustomRange) {
-                    setCustomEnd(format(new Date(), 'yyyy-MM-dd'));
-                    setCustomStart(format(subDays(new Date(), range - 1), 'yyyy-MM-dd'));
-                  }
-                  setUseCustomRange((prev) => !prev);
-                }}
-                className={`px-3 py-1.5 rounded-xl text-xs font-medium border shadow-sm transition-all ${
-                  useCustomRange
-                    ? 'bg-red-600 text-white border-red-600 shadow-red-200'
-                    : 'bg-white text-gray-600 border-gray-200 hover:border-red-300 hover:-translate-y-0.5'
-                }`}
-              >
-                Custom
-              </button>
-            </div>
+            <p className="text-xs text-gray-500 font-medium mb-1">Selected day</p>
+            <Input
+              label=""
+              type="date"
+              value={selectedDay}
+              max={today}
+              onChange={(e) => setSelectedDay(e.target.value)}
+            />
           </div>
 
-          {useCustomRange && (
-            <div className="grid grid-cols-2 gap-2">
-              <Input
-                label="Start"
-                type="date"
-                value={customStart}
-                max={customEnd || undefined}
-                onChange={(e) => setCustomStart(e.target.value)}
-              />
-              <Input
-                label="End"
-                type="date"
-                value={customEnd}
-                min={customStart}
-                max={format(new Date(), 'yyyy-MM-dd')}
-                onChange={(e) => setCustomEnd(e.target.value)}
-              />
-            </div>
-          )}
+          <div className="grid grid-cols-2 gap-2">
+            <Input
+              label="Start"
+              type="date"
+              value={customStart}
+              max={customEnd || undefined}
+              onChange={(e) => setCustomStart(e.target.value)}
+            />
+            <Input
+              label="End"
+              type="date"
+              value={customEnd}
+              min={customStart}
+              max={today}
+              onChange={(e) => setCustomEnd(e.target.value)}
+            />
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -715,6 +690,9 @@ export default function GymDashboard({ targetUserId }: { targetUserId?: string }
                   {editingDiagramId ? 'Save Diagram' : 'Add Diagram'}
                 </button>
               </div>
+              <p className="mt-3 text-xs text-gray-500">
+                Recommended range: last 30 days ({recommendedStart} → {today})
+              </p>
             </div>
           </div>
         )}

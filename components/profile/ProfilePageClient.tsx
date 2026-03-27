@@ -22,7 +22,7 @@ import GymDashboard from '@/components/profile/GymDashboard';
 import { User, Pencil, Check, X, Plus } from 'lucide-react';
 
 const DEFAULT_RANGE_DAYS = 30;
-const DATA_FETCH_LOOKBACK_DAYS = 180;
+const DATA_FETCH_LOOKBACK_DAYS = 36500;
 
 interface ProfilePageClientProps {
   mode: 'diet' | 'gym';
@@ -107,6 +107,7 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
   const [targetProteinInput, setTargetProteinInput] = useState(String(DEFAULT_TARGET_PROTEIN_G));
   const [targetCarbsInput, setTargetCarbsInput] = useState(String(DEFAULT_TARGET_CARBS_G));
   const [targetFatsInput, setTargetFatsInput] = useState(String(DEFAULT_TARGET_FATS_G));
+  const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [diagramRanges, setDiagramRanges] = useState<Record<string, { start: string; end: string }>>({});
   const [ageInput, setAgeInput] = useState('');
   const [heightInput, setHeightInput] = useState('');
@@ -437,19 +438,19 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
     });
   }, [diagramConfigs, diagramRanges, diagramData, today]);
 
-  const latestMacro = macroData.length > 0 ? macroData[macroData.length - 1] : null;
+  const selectedMacro = macroData.find((point) => point.date === selectedDate) ?? null;
   const targetCalories = profile?.target_calories ?? DEFAULT_TARGET_CALORIES;
-  const totalCaloriesToday = latestMacro?.calories ?? 0;
+  const totalCaloriesForSelectedDate = selectedMacro?.calories ?? 0;
   const calorieProgress = targetCalories > 0
-    ? Math.min(totalCaloriesToday / targetCalories, 1)
+    ? Math.min(totalCaloriesForSelectedDate / targetCalories, 1)
     : 0;
   const calorieProgressPercent = Math.round(calorieProgress * 100);
   const circleRadius = 33;
   const circleCircumference = 2 * Math.PI * circleRadius;
   const circleDashOffset = circleCircumference * (1 - calorieProgress);
 
-  const macroGoalTotals = latestMacro
-    ? Math.max(latestMacro.protein + latestMacro.carbs + latestMacro.fats, MIN_MACRO_TOTAL)
+  const macroGoalTotals = selectedMacro
+    ? Math.max(selectedMacro.protein + selectedMacro.carbs + selectedMacro.fats, MIN_MACRO_TOTAL)
     : MIN_MACRO_TOTAL;
   const targetProtein = profile?.target_protein_g ?? DEFAULT_TARGET_PROTEIN_G;
   const targetCarbs = profile?.target_carbs_g ?? DEFAULT_TARGET_CARBS_G;
@@ -464,22 +465,22 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
     {
       key: 'protein',
       label: 'Protein',
-      value: latestMacro?.protein ?? 0,
-      width: `${Math.min(((latestMacro?.protein ?? 0) / macroGoalTotals) * 100, 100)}%`,
+      value: selectedMacro?.protein ?? 0,
+      width: `${Math.min(((selectedMacro?.protein ?? 0) / macroGoalTotals) * 100, 100)}%`,
       color: 'bg-violet-500',
     },
     {
       key: 'carbs',
       label: 'Carbs',
-      value: latestMacro?.carbs ?? 0,
-      width: `${Math.min(((latestMacro?.carbs ?? 0) / macroGoalTotals) * 100, 100)}%`,
+      value: selectedMacro?.carbs ?? 0,
+      width: `${Math.min(((selectedMacro?.carbs ?? 0) / macroGoalTotals) * 100, 100)}%`,
       color: 'bg-amber-500',
     },
     {
       key: 'fats',
       label: 'Fats',
-      value: latestMacro?.fats ?? 0,
-      width: `${Math.min(((latestMacro?.fats ?? 0) / macroGoalTotals) * 100, 100)}%`,
+      value: selectedMacro?.fats ?? 0,
+      width: `${Math.min(((selectedMacro?.fats ?? 0) / macroGoalTotals) * 100, 100)}%`,
       color: 'bg-rose-500',
     },
   ];
@@ -671,8 +672,19 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
               <div className="grid grid-cols-[1fr_auto] gap-4 items-center">
                 <div>
                   <p className="text-xs uppercase tracking-wide text-gray-500 font-semibold">Total calories</p>
-                  <p className="text-3xl font-bold text-gray-900 leading-tight">{totalCaloriesToday} kcal</p>
+                  <p className="text-3xl font-bold text-gray-900 leading-tight">{totalCaloriesForSelectedDate} kcal</p>
                   <p className="text-sm text-gray-500 mt-1">{calorieProgressPercent}% of {targetCalories} kcal target</p>
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <label htmlFor="profile-selected-date" className="text-xs font-medium text-gray-600">Date</label>
+                    <input
+                      id="profile-selected-date"
+                      type="date"
+                      value={selectedDate}
+                      max={today}
+                      onChange={(e) => setSelectedDate(e.target.value)}
+                      className="px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                    />
+                  </div>
                   <div className="mt-3 flex flex-wrap items-center gap-2">
                     <label htmlFor="target-calories" className="text-xs font-medium text-gray-600">Target</label>
                     <input
