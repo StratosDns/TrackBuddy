@@ -510,10 +510,10 @@ export default function FriendProfilePage({
                   <button
                     key={days}
                     onClick={() => setRange(days)}
-                    className={`px-4 py-1.5 text-sm rounded-full font-medium border transition-colors
+                    className={`px-4 py-1.5 text-sm rounded-xl font-medium border shadow-sm transition-all
                       ${range === days
-                        ? 'bg-green-600 text-white border-green-600'
-                        : 'bg-white text-gray-600 border-gray-200 hover:border-green-400'
+                        ? 'bg-green-600 text-white border-green-600 shadow-green-200'
+                        : 'bg-white text-gray-600 border-gray-200 hover:border-green-400 hover:-translate-y-0.5'
                       }`}
                   >
                     {label}
@@ -542,7 +542,7 @@ export default function FriendProfilePage({
                   <Card title="Custom Diagrams">
                     <div className="flex flex-col gap-4">
                       {diagramConfigs.map((diagram) => (
-                        <div key={diagram.id} className="border border-gray-100 rounded-xl p-4">
+                        <div key={diagram.id} className="border border-gray-100 rounded-2xl p-4 shadow-sm">
                           <div className="flex items-center justify-between gap-3 mb-3">
                             <div className="flex flex-wrap gap-2">
                               {diagram.metrics.map((metric) => (
@@ -580,7 +580,7 @@ export default function FriendProfilePage({
 
                       <button
                         onClick={openNewDiagramPicker}
-                        className="w-full h-24 rounded-xl border-2 border-dashed border-gray-300 bg-gray-100/90 hover:bg-gray-100 transition-colors flex items-center justify-center text-gray-500"
+                        className="w-full h-24 rounded-2xl border-2 border-dashed border-green-200 bg-green-50/80 hover:bg-green-50 transition-colors flex items-center justify-center text-green-500 shadow-sm"
                       >
                         <Plus className="w-7 h-7" />
                       </button>
@@ -670,10 +670,10 @@ export default function FriendProfilePage({
                   <button
                     key={metric}
                     onClick={() => togglePendingMetric(metric)}
-                    className={`px-3 py-2 text-sm rounded-lg border transition-colors text-left
+                    className={`px-3 py-2 text-sm rounded-xl border shadow-sm transition-all text-left
                       ${pendingMetrics.includes(metric)
-                        ? 'bg-green-600 text-white border-green-600'
-                        : 'bg-white text-gray-700 border-gray-200 hover:border-green-400'
+                        ? 'bg-green-600 text-white border-green-600 shadow-green-200'
+                        : 'bg-white text-gray-700 border-gray-200 hover:border-green-400 hover:-translate-y-0.5'
                       }`}
                   >
                     {DIAGRAM_METRIC_META[metric].label}
