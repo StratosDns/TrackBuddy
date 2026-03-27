@@ -46,6 +46,8 @@ const DIAGRAM_STYLE_LABELS: Record<DiagramStyle, string> = {
   stackedBar: 'Stacked Bar',
   stepLine: 'Step Line',
 };
+const DEFAULT_TARGET_CALORIES = 2000;
+const MIN_MACRO_TOTAL = 1;
 
 interface DiagramConfigRow {
   id: string;
@@ -81,7 +83,7 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
   const [pendingMetricUnits, setPendingMetricUnits] = useState<DiagramMetricUnits>({});
   const [editingDiagramId, setEditingDiagramId] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [targetCaloriesInput, setTargetCaloriesInput] = useState('2000');
+  const [targetCaloriesInput, setTargetCaloriesInput] = useState(String(DEFAULT_TARGET_CALORIES));
 
   const resetDiagramPicker = useCallback(() => {
     setPendingMetrics([]);
@@ -118,7 +120,7 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
         .single();
       setProfile(newProfile);
       setDraftName(newProfile?.display_name ?? '');
-      setTargetCaloriesInput('2000');
+      setTargetCaloriesInput(String(DEFAULT_TARGET_CALORIES));
     } else {
       setProfile(profileData);
       setDraftName(profileData.display_name);
@@ -126,7 +128,7 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
       setTargetCaloriesInput(
         profileWithTarget.target_calories && profileWithTarget.target_calories > 0
           ? String(profileWithTarget.target_calories)
-          : '2000'
+          : String(DEFAULT_TARGET_CALORIES)
       );
     }
 
@@ -228,8 +230,8 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
 
   async function saveTargetCalories() {
     if (!profile) return;
-    const nextTarget = Number.parseInt(targetCaloriesInput, 10);
-    if (!Number.isFinite(nextTarget) || nextTarget <= 0) return;
+    const nextTarget = Number(targetCaloriesInput.trim());
+    if (!Number.isInteger(nextTarget) || nextTarget <= 0) return;
     const supabase = createClient();
     await supabase.from('profiles').update({ target_calories: nextTarget }).eq('id', profile.id);
     setProfile((prev) => prev ? { ...prev, target_calories: nextTarget } as Profile : prev);
@@ -278,9 +280,7 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
   }, [macroData, weightData, waterData]);
 
   const latestMacro = macroData.length > 0 ? macroData[macroData.length - 1] : null;
-  const targetCalories = profile?.target_calories && profile.target_calories > 0
-    ? profile.target_calories
-    : 2000;
+  const targetCalories = profile?.target_calories ?? DEFAULT_TARGET_CALORIES;
   const totalCaloriesToday = latestMacro?.calories ?? 0;
   const calorieProgress = targetCalories > 0
     ? Math.min(totalCaloriesToday / targetCalories, 1)
@@ -291,8 +291,8 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
   const circleDashOffset = circleCircumference * (1 - calorieProgress);
 
   const macroGoalTotals = latestMacro
-    ? Math.max(latestMacro.protein + latestMacro.carbs + latestMacro.fats, 1)
-    : 1;
+    ? Math.max(latestMacro.protein + latestMacro.carbs + latestMacro.fats, MIN_MACRO_TOTAL)
+    : MIN_MACRO_TOTAL;
   const macroProgressItems = [
     {
       key: 'protein',

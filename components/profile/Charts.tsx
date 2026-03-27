@@ -51,6 +51,12 @@ export const DIAGRAM_METRIC_UNIT_OPTIONS: Record<DiagramMetric, string[]> = {
   protein: ['g', 'oz'],
 };
 
+const L_TO_ML = 1000;
+const KG_TO_LB = 2.2046226218;
+const KCAL_TO_KJ = 4.184;
+const G_TO_OZ = 0.0352739619;
+const VALUE_DECIMALS = 100;
+
 export interface VisibleMacros {
   protein: boolean;
   carbs: boolean;
@@ -78,16 +84,16 @@ export function normalizeDiagramMetricUnits(value: unknown): DiagramMetricUnits 
 function convertDiagramValue(metric: DiagramMetric, value: number, units?: DiagramMetricUnits) {
   const unit = getDiagramMetricUnit(metric, units);
   if (metric === 'water') {
-    return unit === 'ml' ? value * 1000 : value;
+    return unit === 'ml' ? value * L_TO_ML : value;
   }
   if (metric === 'weight') {
-    return unit === 'lb' ? value * 2.2046226218 : value;
+    return unit === 'lb' ? value * KG_TO_LB : value;
   }
   if (metric === 'calories') {
-    return unit === 'kJ' ? value * 4.184 : value;
+    return unit === 'kJ' ? value * KCAL_TO_KJ : value;
   }
   if (metric === 'carbs' || metric === 'fats' || metric === 'protein') {
-    return unit === 'oz' ? value * 0.0352739619 : value;
+    return unit === 'oz' ? value * G_TO_OZ : value;
   }
   return value;
 }
@@ -102,7 +108,7 @@ function formatDiagramTooltipValue(
   if (typeof value !== 'number') {
     return [`${value} ${unit}`, label];
   }
-  return [`${Math.round(value * 100) / 100} ${unit}`, label];
+  return [`${Math.round(value * VALUE_DECIMALS) / VALUE_DECIMALS} ${unit}`, label];
 }
 
 export function WeightChart({ data }: { data: WeightChartData[] }) {
