@@ -21,6 +21,7 @@ interface MacroChartData {
 
 export type DiagramMetric = 'calories' | 'water' | 'weight' | 'carbs' | 'fats' | 'protein';
 export type DiagramStyle = 'bar' | 'line' | 'area' | 'stackedBar' | 'stepLine';
+export type DiagramMetricUnits = Partial<Record<DiagramMetric, string>>;
 
 export interface DiagramChartDataPoint {
   date: string;
@@ -41,15 +42,73 @@ export const DIAGRAM_METRIC_META: Record<DiagramMetric, { label: string; color: 
   protein: { label: 'Protein', color: '#8b5cf6', unit: 'g' },
 };
 
+export const DIAGRAM_METRIC_UNIT_OPTIONS: Record<DiagramMetric, string[]> = {
+  calories: ['kcal', 'kJ'],
+  water: ['L', 'ml'],
+  weight: ['kg', 'lb'],
+  carbs: ['g', 'oz'],
+  fats: ['g', 'oz'],
+  protein: ['g', 'oz'],
+};
+
+const L_TO_ML = 1000;
+const KG_TO_LB = 2.2046226218;
+const KCAL_TO_KJ = 4.184;
+const G_TO_OZ = 0.0352739619;
+const VALUE_DECIMALS = 100;
+
 export interface VisibleMacros {
   protein: boolean;
   carbs: boolean;
   fats: boolean;
 }
 
-function formatDiagramTooltipValue(value: string | number, metric: DiagramMetric) {
-  const { label, unit } = DIAGRAM_METRIC_META[metric];
-  return [`${value} ${unit}`, label];
+export function getDiagramMetricUnit(metric: DiagramMetric, units?: DiagramMetricUnits) {
+  const selected = units?.[metric];
+  if (selected && DIAGRAM_METRIC_UNIT_OPTIONS[metric].includes(selected)) return selected;
+  return DIAGRAM_METRIC_META[metric].unit;
+}
+
+export function normalizeDiagramMetricUnits(value: unknown): DiagramMetricUnits {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const entries = Object.entries(value as Record<string, unknown>)
+    .filter(([metric, unit]) => (
+      metric in DIAGRAM_METRIC_UNIT_OPTIONS
+      && typeof unit === 'string'
+      && DIAGRAM_METRIC_UNIT_OPTIONS[metric as DiagramMetric].includes(unit)
+    ))
+    .map(([metric, unit]) => [metric as DiagramMetric, unit as string]);
+  return Object.fromEntries(entries);
+}
+
+function convertDiagramValue(metric: DiagramMetric, value: number, units?: DiagramMetricUnits) {
+  const unit = getDiagramMetricUnit(metric, units);
+  if (metric === 'water') {
+    return unit === 'ml' ? value * L_TO_ML : value;
+  }
+  if (metric === 'weight') {
+    return unit === 'lb' ? value * KG_TO_LB : value;
+  }
+  if (metric === 'calories') {
+    return unit === 'kJ' ? value * KCAL_TO_KJ : value;
+  }
+  if (metric === 'carbs' || metric === 'fats' || metric === 'protein') {
+    return unit === 'oz' ? value * G_TO_OZ : value;
+  }
+  return value;
+}
+
+function formatDiagramTooltipValue(
+  value: string | number,
+  metric: DiagramMetric,
+  units?: DiagramMetricUnits
+) {
+  const label = DIAGRAM_METRIC_META[metric].label;
+  const unit = getDiagramMetricUnit(metric, units);
+  if (typeof value !== 'number') {
+    return [`${value} ${unit}`, label];
+  }
+  return [`${Math.round(value * VALUE_DECIMALS) / VALUE_DECIMALS} ${unit}`, label];
 }
 
 export function WeightChart({ data }: { data: WeightChartData[] }) {
@@ -174,10 +233,12 @@ export function CustomDiagramChart({
   data,
   metrics,
   style,
+  metricUnits,
 }: {
   data: DiagramChartDataPoint[];
   metrics: DiagramMetric[];
   style: DiagramStyle;
+  metricUnits?: DiagramMetricUnits;
 }) {
   if (data.length === 0) {
     return (
@@ -195,6 +256,19 @@ export function CustomDiagramChart({
     );
   }
 
+  const chartData = data.map((point) => {
+    const next: DiagramChartDataPoint & Record<string, number | string | undefined> = { ...point };
+    for (const metric of metrics) {
+      const rawValue = point[metric];
+      next[`${metric}__display`] = typeof rawValue === 'number'
+        ? convertDiagramValue(metric, rawValue, metricUnits)
+        : undefined;
+    }
+    return next;
+  });
+
+  const yAxisUnit = metrics.length === 1 ? getDiagramMetricUnit(metrics[0], metricUnits) : undefined;
+
   const sharedElements = (
     <>
       <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
@@ -203,12 +277,13 @@ export function CustomDiagramChart({
         tickFormatter={(v) => format(parseISO(v), 'MMM d')}
         tick={{ fontSize: 11 }}
       />
-      <YAxis tick={{ fontSize: 11 }} />
+      <YAxis tick={{ fontSize: 11 }} unit={yAxisUnit} />
       <Tooltip
         labelFormatter={(l) => format(parseISO(l as string), 'MMM d, yyyy')}
-        formatter={(v, _name, item) =>
-          formatDiagramTooltipValue(v as string | number, item.dataKey as DiagramMetric)
-        }
+        formatter={(v, _name, item) => {
+          const metric = String(item.dataKey).replace('__display', '') as DiagramMetric;
+          return formatDiagramTooltipValue(v as string | number, metric, metricUnits);
+        }}
       />
       <Legend />
     </>
@@ -217,14 +292,14 @@ export function CustomDiagramChart({
   return (
     <ResponsiveContainer width="100%" height={240}>
       {style === 'line' ? (
-        <LineChart data={data} margin={{ top: 5, right: 5, bottom: 5, left: -20 }}>
+        <LineChart data={chartData} margin={{ top: 5, right: 5, bottom: 5, left: -20 }}>
           {sharedElements}
           {metrics.map((metric) => (
             <Line
               key={metric}
               type="monotone"
-              dataKey={metric}
-              name={DIAGRAM_METRIC_META[metric].label}
+              dataKey={`${metric}__display`}
+              name={`${DIAGRAM_METRIC_META[metric].label} (${getDiagramMetricUnit(metric, metricUnits)})`}
               stroke={DIAGRAM_METRIC_META[metric].color}
               strokeWidth={2}
               dot={{ r: 2 }}
@@ -233,14 +308,14 @@ export function CustomDiagramChart({
           ))}
         </LineChart>
       ) : style === 'stepLine' ? (
-        <LineChart data={data} margin={{ top: 5, right: 5, bottom: 5, left: -20 }}>
+        <LineChart data={chartData} margin={{ top: 5, right: 5, bottom: 5, left: -20 }}>
           {sharedElements}
           {metrics.map((metric) => (
             <Line
               key={metric}
               type="stepAfter"
-              dataKey={metric}
-              name={DIAGRAM_METRIC_META[metric].label}
+              dataKey={`${metric}__display`}
+              name={`${DIAGRAM_METRIC_META[metric].label} (${getDiagramMetricUnit(metric, metricUnits)})`}
               stroke={DIAGRAM_METRIC_META[metric].color}
               strokeWidth={2}
               dot={{ r: 2 }}
@@ -249,14 +324,14 @@ export function CustomDiagramChart({
           ))}
         </LineChart>
       ) : style === 'area' ? (
-        <AreaChart data={data} margin={{ top: 5, right: 5, bottom: 5, left: -20 }}>
+        <AreaChart data={chartData} margin={{ top: 5, right: 5, bottom: 5, left: -20 }}>
           {sharedElements}
           {metrics.map((metric) => (
             <Area
               key={metric}
               type="monotone"
-              dataKey={metric}
-              name={DIAGRAM_METRIC_META[metric].label}
+              dataKey={`${metric}__display`}
+              name={`${DIAGRAM_METRIC_META[metric].label} (${getDiagramMetricUnit(metric, metricUnits)})`}
               stroke={DIAGRAM_METRIC_META[metric].color}
               fill={DIAGRAM_METRIC_META[metric].color}
               fillOpacity={0.2}
@@ -265,27 +340,27 @@ export function CustomDiagramChart({
           ))}
         </AreaChart>
       ) : style === 'stackedBar' ? (
-        <BarChart data={data} margin={{ top: 5, right: 5, bottom: 5, left: -20 }}>
+        <BarChart data={chartData} margin={{ top: 5, right: 5, bottom: 5, left: -20 }}>
           {sharedElements}
           {metrics.map((metric) => (
             <Bar
               key={metric}
-              dataKey={metric}
+              dataKey={`${metric}__display`}
               stackId="diagram-stack"
-              name={DIAGRAM_METRIC_META[metric].label}
+              name={`${DIAGRAM_METRIC_META[metric].label} (${getDiagramMetricUnit(metric, metricUnits)})`}
               fill={DIAGRAM_METRIC_META[metric].color}
               radius={[4, 4, 0, 0]}
             />
           ))}
         </BarChart>
       ) : (
-        <BarChart data={data} margin={{ top: 5, right: 5, bottom: 5, left: -20 }}>
+        <BarChart data={chartData} margin={{ top: 5, right: 5, bottom: 5, left: -20 }}>
           {sharedElements}
           {metrics.map((metric) => (
             <Bar
               key={metric}
-              dataKey={metric}
-              name={DIAGRAM_METRIC_META[metric].label}
+              dataKey={`${metric}__display`}
+              name={`${DIAGRAM_METRIC_META[metric].label} (${getDiagramMetricUnit(metric, metricUnits)})`}
               fill={DIAGRAM_METRIC_META[metric].color}
               radius={[4, 4, 0, 0]}
             />

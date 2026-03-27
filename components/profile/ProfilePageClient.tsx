@@ -9,7 +9,11 @@ import {
   CustomDiagramChart,
   DiagramMetric,
   DiagramStyle,
+  DiagramMetricUnits,
   DIAGRAM_METRIC_META,
+  DIAGRAM_METRIC_UNIT_OPTIONS,
+  getDiagramMetricUnit,
+  normalizeDiagramMetricUnits,
   DiagramChartDataPoint,
 } from '@/components/profile/Charts';
 import GymDashboard from '@/components/profile/GymDashboard';
@@ -30,6 +34,7 @@ interface DiagramConfig {
   id: string;
   metrics: DiagramMetric[];
   style: DiagramStyle;
+  metricUnits: DiagramMetricUnits;
 }
 
 const DIAGRAM_METRICS: DiagramMetric[] = ['calories', 'water', 'weight', 'carbs', 'fats', 'protein'];
@@ -41,11 +46,14 @@ const DIAGRAM_STYLE_LABELS: Record<DiagramStyle, string> = {
   stackedBar: 'Stacked Bar',
   stepLine: 'Step Line',
 };
+const DEFAULT_TARGET_CALORIES = 2000;
+const MIN_MACRO_TOTAL = 1;
 
 interface DiagramConfigRow {
   id: string;
   metrics: string[];
   style: string;
+  metric_units?: unknown;
 }
 
 export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
@@ -72,12 +80,15 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
   const [showDiagramPicker, setShowDiagramPicker] = useState(false);
   const [pendingMetrics, setPendingMetrics] = useState<DiagramMetric[]>([]);
   const [pendingStyle, setPendingStyle] = useState<DiagramStyle>('bar');
+  const [pendingMetricUnits, setPendingMetricUnits] = useState<DiagramMetricUnits>({});
   const [editingDiagramId, setEditingDiagramId] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [targetCaloriesInput, setTargetCaloriesInput] = useState(String(DEFAULT_TARGET_CALORIES));
 
   const resetDiagramPicker = useCallback(() => {
     setPendingMetrics([]);
     setPendingStyle('bar');
+    setPendingMetricUnits({});
     setEditingDiagramId(null);
     setShowDiagramPicker(false);
   }, []);
@@ -109,9 +120,16 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
         .single();
       setProfile(newProfile);
       setDraftName(newProfile?.display_name ?? '');
+      setTargetCaloriesInput(String(DEFAULT_TARGET_CALORIES));
     } else {
       setProfile(profileData);
       setDraftName(profileData.display_name);
+      const profileWithTarget = profileData as Profile & { target_calories?: number | null };
+      setTargetCaloriesInput(
+        profileWithTarget.target_calories && profileWithTarget.target_calories > 0
+          ? String(profileWithTarget.target_calories)
+          : String(DEFAULT_TARGET_CALORIES)
+      );
     }
 
     let startDate: string;
@@ -152,7 +170,7 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
         .order('date'),
       supabase
         .from('diagram_configs')
-        .select('id, metrics, style')
+        .select('id, metrics, style, metric_units')
         .eq('user_id', user.id)
         .order('created_at'),
     ]);
@@ -165,6 +183,7 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
         id: row.id,
         metrics: (row.metrics || []).filter((metric): metric is DiagramMetric => validMetrics.has(metric as DiagramMetric)),
         style: validStyles.has(row.style as DiagramStyle) ? (row.style as DiagramStyle) : 'bar',
+        metricUnits: normalizeDiagramMetricUnits(row.metric_units),
       }))
       .filter((row) => row.metrics.length > 0);
     setDiagramConfigs(normalizedDiagrams);
@@ -209,6 +228,16 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
     setEditingName(false);
   }
 
+  async function saveTargetCalories() {
+    if (!profile) return;
+    const nextTarget = Number(targetCaloriesInput.trim());
+    if (!Number.isInteger(nextTarget) || nextTarget <= 0) return;
+    const supabase = createClient();
+    await supabase.from('profiles').update({ target_calories: nextTarget }).eq('id', profile.id);
+    setProfile((prev) => prev ? { ...prev, target_calories: nextTarget } as Profile : prev);
+    setTargetCaloriesInput(String(nextTarget));
+  }
+
   // When switching to custom range, pre-fill with current preset
   function handleCustomRangeToggle() {
     if (!useCustomRange) {
@@ -250,10 +279,55 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
     return Object.values(byDate).sort((a, b) => a.date.localeCompare(b.date));
   }, [macroData, weightData, waterData]);
 
+  const latestMacro = macroData.length > 0 ? macroData[macroData.length - 1] : null;
+  const targetCalories = profile?.target_calories ?? DEFAULT_TARGET_CALORIES;
+  const totalCaloriesToday = latestMacro?.calories ?? 0;
+  const calorieProgress = targetCalories > 0
+    ? Math.min(totalCaloriesToday / targetCalories, 1)
+    : 0;
+  const calorieProgressPercent = Math.round(calorieProgress * 100);
+  const circleRadius = 33;
+  const circleCircumference = 2 * Math.PI * circleRadius;
+  const circleDashOffset = circleCircumference * (1 - calorieProgress);
+
+  const macroGoalTotals = latestMacro
+    ? Math.max(latestMacro.protein + latestMacro.carbs + latestMacro.fats, MIN_MACRO_TOTAL)
+    : MIN_MACRO_TOTAL;
+  const macroProgressItems = [
+    {
+      key: 'protein',
+      label: 'Protein',
+      value: latestMacro?.protein ?? 0,
+      width: `${Math.min(((latestMacro?.protein ?? 0) / macroGoalTotals) * 100, 100)}%`,
+      color: 'bg-violet-500',
+    },
+    {
+      key: 'carbs',
+      label: 'Carbs',
+      value: latestMacro?.carbs ?? 0,
+      width: `${Math.min(((latestMacro?.carbs ?? 0) / macroGoalTotals) * 100, 100)}%`,
+      color: 'bg-amber-500',
+    },
+    {
+      key: 'fats',
+      label: 'Fats',
+      value: latestMacro?.fats ?? 0,
+      width: `${Math.min(((latestMacro?.fats ?? 0) / macroGoalTotals) * 100, 100)}%`,
+      color: 'bg-rose-500',
+    },
+  ];
+
   function togglePendingMetric(metric: DiagramMetric) {
     setPendingMetrics((prev) => (
       prev.includes(metric) ? prev.filter((m) => m !== metric) : [...prev, metric]
     ));
+  }
+
+  function setPendingMetricUnit(metric: DiagramMetric, unit: string) {
+    setPendingMetricUnits((prev) => ({
+      ...prev,
+      [metric]: unit,
+    }));
   }
 
   async function addDiagram() {
@@ -268,6 +342,7 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
         .update({
           metrics: [...pendingMetrics],
           style: pendingStyle,
+          metric_units: pendingMetricUnits,
         })
         .eq('id', editingDiagramId)
         .eq('user_id', currentUserId);
@@ -276,7 +351,7 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
 
       setDiagramConfigs((prev) => prev.map((diagram) => (
         diagram.id === editingDiagramId
-          ? { ...diagram, metrics: [...pendingMetrics], style: pendingStyle }
+          ? { ...diagram, metrics: [...pendingMetrics], style: pendingStyle, metricUnits: pendingMetricUnits }
           : diagram
       )));
       resetDiagramPicker();
@@ -289,8 +364,9 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
         user_id: currentUserId,
         metrics: [...pendingMetrics],
         style: pendingStyle,
+        metric_units: pendingMetricUnits,
       })
-      .select('id')
+      .select('id, metric_units')
       .single();
 
     if (error || !data) return;
@@ -301,6 +377,7 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
         id: data.id,
         metrics: [...pendingMetrics],
         style: pendingStyle,
+        metricUnits: normalizeDiagramMetricUnits(data.metric_units ?? pendingMetricUnits),
       },
     ]);
     resetDiagramPicker();
@@ -326,6 +403,7 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
     setEditingDiagramId(diagram.id);
     setPendingMetrics([...diagram.metrics]);
     setPendingStyle(diagram.style);
+    setPendingMetricUnits(diagram.metricUnits || {});
     setShowDiagramPicker(true);
   }
 
@@ -333,6 +411,7 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
     setEditingDiagramId(null);
     setPendingMetrics([]);
     setPendingStyle('bar');
+    setPendingMetricUnits({});
     setShowDiagramPicker(true);
   }
 
@@ -447,10 +526,97 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
             )}
           </div>
 
-          <Card title="Diagrams">
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+              <div className="grid grid-cols-[1fr_auto] gap-4 items-center">
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-gray-500 font-semibold">Total calories</p>
+                  <p className="text-3xl font-bold text-gray-900 leading-tight">{totalCaloriesToday} kcal</p>
+                  <p className="text-sm text-gray-500 mt-1">{calorieProgressPercent}% of {targetCalories} kcal target</p>
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <label htmlFor="target-calories" className="text-xs font-medium text-gray-600">Target</label>
+                    <input
+                      id="target-calories"
+                      type="number"
+                      min={1}
+                      value={targetCaloriesInput}
+                      onChange={(e) => setTargetCaloriesInput(e.target.value)}
+                      className="w-28 px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                    />
+                    <button
+                      onClick={saveTargetCalories}
+                      className="px-3 py-1.5 text-xs rounded-lg border border-green-600 bg-green-600 text-white hover:bg-green-700"
+                    >
+                      Save
+                    </button>
+                  </div>
+                </div>
+                <div className="relative w-24 h-24">
+                  <svg className="w-24 h-24 -rotate-90" viewBox="0 0 80 80" aria-hidden="true">
+                    <circle cx="40" cy="40" r={circleRadius} stroke="#e5e7eb" strokeWidth="8" fill="none" />
+                    <circle
+                      cx="40"
+                      cy="40"
+                      r={circleRadius}
+                      stroke="#16a34a"
+                      strokeWidth="8"
+                      fill="none"
+                      strokeLinecap="round"
+                      strokeDasharray={circleCircumference}
+                      strokeDashoffset={circleDashOffset}
+                    />
+                  </svg>
+                  <div className="absolute inset-0 flex items-center justify-center text-sm font-semibold text-gray-700">
+                    {calorieProgressPercent}%
+                  </div>
+                </div>
+              </div>
+              <div className="mt-4 flex flex-col gap-2">
+                {macroProgressItems.map((item) => (
+                  <div key={item.key} className="grid grid-cols-[auto_1fr_auto] gap-2 items-center">
+                    <span className="text-xs text-gray-600 font-medium w-12">{item.label}</span>
+                    <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
+                      <div className={`h-full ${item.color}`} style={{ width: item.width }} />
+                    </div>
+                    <span className="text-xs text-gray-500 w-12 text-right">{item.value}g</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+              <h3 className="font-semibold text-gray-800 mb-4">Personal data</h3>
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2">
+                  <p className="text-xs text-gray-500">Name</p>
+                  <p className="font-medium text-gray-900">{profile?.display_name || profile?.username || '-'}</p>
+                </div>
+                <div className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2">
+                  <p className="text-xs text-gray-500">Age</p>
+                  <p className="font-medium text-gray-900">{profile?.age ?? '-'}</p>
+                </div>
+                <div className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2">
+                  <p className="text-xs text-gray-500">Height</p>
+                  <p className="font-medium text-gray-900">{profile?.height_cm ? `${profile.height_cm} cm` : '-'}</p>
+                </div>
+                <div className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2">
+                  <p className="text-xs text-gray-500">Weight</p>
+                  <p className="font-medium text-gray-900">
+                    {weightData.length > 0 ? `${weightData[weightData.length - 1].weight} kg` : '-'}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2 col-span-2">
+                  <p className="text-xs text-gray-500">Email</p>
+                  <p className="font-medium text-gray-900 break-all">{email || '-'}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <Card title="Diagrams" className="rounded-2xl shadow-sm">
             <div className="flex flex-col gap-4">
               {diagramConfigs.map((diagram) => (
-                  <div key={diagram.id} className="border border-gray-100 rounded-2xl p-4 shadow-sm">
+                  <div key={diagram.id} className="border border-gray-100 rounded-2xl p-4 shadow-sm bg-white">
                   <div className="flex items-center justify-between gap-3 mb-3">
                     <div className="flex flex-wrap gap-2">
                       {diagram.metrics.map((metric) => (
@@ -458,7 +624,7 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
                           key={metric}
                           className="px-2.5 py-1 text-xs rounded-full border border-gray-200 text-gray-700 bg-gray-50"
                         >
-                          {DIAGRAM_METRIC_META[metric].label}
+                          {DIAGRAM_METRIC_META[metric].label} ({getDiagramMetricUnit(metric, diagram.metricUnits)})
                         </span>
                       ))}
                       <span className="px-2.5 py-1 text-xs rounded-full border border-gray-200 text-gray-500 bg-white">
@@ -480,7 +646,12 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
                       <X className="w-4 h-4" />
                     </button>
                   </div>
-                  <CustomDiagramChart data={diagramData} metrics={diagram.metrics} style={diagram.style} />
+                  <CustomDiagramChart
+                    data={diagramData}
+                    metrics={diagram.metrics}
+                    style={diagram.style}
+                    metricUnits={diagram.metricUnits}
+                  />
                 </div>
               ))}
 
@@ -531,6 +702,31 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
                     ))}
                   </div>
                 </div>
+
+                {pendingMetrics.length > 0 && (
+                  <div className="mb-4">
+                    <p className="text-sm font-medium text-gray-700 mb-2">Units</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {pendingMetrics.map((metric) => (
+                        <label
+                          key={`${metric}-unit`}
+                          className="flex items-center justify-between gap-3 px-3 py-2 rounded-xl border border-gray-200 bg-gray-50"
+                        >
+                          <span className="text-sm text-gray-700">{DIAGRAM_METRIC_META[metric].label}</span>
+                          <select
+                            value={getDiagramMetricUnit(metric, pendingMetricUnits)}
+                            onChange={(e) => setPendingMetricUnit(metric, e.target.value)}
+                            className="px-2 py-1 border border-gray-200 rounded-lg text-xs bg-white"
+                          >
+                            {DIAGRAM_METRIC_UNIT_OPTIONS[metric].map((unit) => (
+                              <option key={unit} value={unit}>{unit}</option>
+                            ))}
+                          </select>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <div className="mb-5">
                   <label htmlFor="diagram-style" className="text-sm font-medium text-gray-700 mb-2 block">

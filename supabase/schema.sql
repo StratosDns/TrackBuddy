@@ -8,8 +8,12 @@ create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   username text unique not null,
   display_name text not null default '',
+  target_calories integer not null default 2000 check (target_calories > 0),
   created_at timestamptz default now() not null
 );
+
+alter table public.profiles
+  add column if not exists target_calories integer not null default 2000 check (target_calories > 0);
 
 -- Row Level Security for profiles
 alter table public.profiles enable row level security;
@@ -229,9 +233,13 @@ create table if not exists public.diagram_configs (
   user_id uuid references auth.users(id) on delete cascade not null,
   metrics text[] not null default '{}'::text[],
   style text not null check (style in ('bar', 'line', 'area', 'stackedBar', 'stepLine')),
+  metric_units jsonb not null default '{}'::jsonb,
   created_at timestamptz default now() not null,
   updated_at timestamptz default now() not null
 );
+
+alter table public.diagram_configs
+  add column if not exists metric_units jsonb not null default '{}'::jsonb;
 
 alter table public.diagram_configs enable row level security;
 
