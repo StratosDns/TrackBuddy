@@ -34,12 +34,37 @@ const METRIC_LABELS: Record<TimelineMetric, string> = {
   totalReps: 'Total Reps',
   sets: 'Sets',
 };
+const VALID_METRICS = new Set<TimelineMetric>(Object.keys(METRIC_LABELS) as TimelineMetric[]);
+const VALID_CHART_STYLES = new Set<ChartType>(Object.keys(CHART_STYLE_LABELS) as ChartType[]);
+const SUMMARY_CARD_CLASS = 'rounded-2xl bg-gradient-to-br from-red-50 to-red-100/60 border border-red-100 p-3 shadow-sm';
+const DEFAULT_TIMELINE_METRIC: TimelineMetric = 'maxWeight';
+const DEFAULT_CHART_TYPE: ChartType = 'line';
 
 interface GymDiagramConfig {
   id: string;
   exerciseName: string;
   metric: TimelineMetric;
   style: ChartType;
+}
+
+function generateDiagramId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `gym-diagram-${Date.now()}-${Math.floor(Math.random() * 1_000_000_000)}`;
+}
+
+function createUniqueDiagramId(existingIds: Set<string>): string {
+  let id = generateDiagramId();
+  let attempts = 0;
+  while (existingIds.has(id) && attempts < 5) {
+    id = generateDiagramId();
+    attempts += 1;
+  }
+  if (existingIds.has(id)) {
+    throw new Error('Unable to generate unique gym diagram ID');
+  }
+  return id;
 }
 
 function parseSetRows(raw: unknown): WorkoutSetRow[] {
@@ -63,6 +88,7 @@ function timelineFormatter(metric: TimelineMetric, value: number): string {
 }
 
 export default function GymDashboard({ targetUserId }: { targetUserId?: string }) {
+  const storageKey = `${GYM_DIAGRAM_STORAGE_PREFIX}${targetUserId || 'self'}`;
   const [workoutLogs, setWorkoutLogs] = useState<WorkoutLog[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -72,13 +98,27 @@ export default function GymDashboard({ targetUserId }: { targetUserId?: string }
   const [customEnd, setCustomEnd] = useState('');
   const [showMovingAverage, setShowMovingAverage] = useState(true);
   const [movingAverageWindow, setMovingAverageWindow] = useState(3);
-  const [diagramConfigs, setDiagramConfigs] = useState<GymDiagramConfig[]>([]);
+  const [diagramConfigs, setDiagramConfigs] = useState<GymDiagramConfig[]>(() => {
+    if (typeof window === 'undefined') return [];
+    const raw = window.localStorage.getItem(storageKey);
+    if (!raw) return [];
+    try {
+      const parsed = JSON.parse(raw) as GymDiagramConfig[];
+      return (parsed || []).filter((diagram) => (
+        Boolean(diagram.id)
+        && Boolean(diagram.exerciseName)
+        && VALID_METRICS.has(diagram.metric)
+        && VALID_CHART_STYLES.has(diagram.style)
+      ));
+    } catch {
+      return [];
+    }
+  });
   const [showDiagramPicker, setShowDiagramPicker] = useState(false);
   const [editingDiagramId, setEditingDiagramId] = useState<string | null>(null);
   const [pendingExercise, setPendingExercise] = useState('');
-  const [pendingMetric, setPendingMetric] = useState<TimelineMetric>('maxWeight');
-  const [pendingStyle, setPendingStyle] = useState<ChartType>('line');
-  const [diagramConfigsLoaded, setDiagramConfigsLoaded] = useState(false);
+  const [pendingMetric, setPendingMetric] = useState<TimelineMetric>(DEFAULT_TIMELINE_METRIC);
+  const [pendingStyle, setPendingStyle] = useState<ChartType>(DEFAULT_CHART_TYPE);
 
   useEffect(() => {
     async function loadGymData() {
@@ -107,8 +147,6 @@ export default function GymDashboard({ targetUserId }: { targetUserId?: string }
 
     loadGymData();
   }, [targetUserId]);
-
-  const storageKey = `${GYM_DIAGRAM_STORAGE_PREFIX}${targetUserId || 'self'}`;
 
   const timelineData = useMemo(() => {
     const grouped = new Map<string, WorkoutLog[]>();
@@ -189,58 +227,7 @@ export default function GymDashboard({ targetUserId }: { targetUserId?: string }
   ]);
 
   const timelineExercises = Object.keys(timelineData);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const raw = window.localStorage.getItem(storageKey);
-    if (!raw) {
-      queueMicrotask(() => {
-        setDiagramConfigsLoaded(true);
-      });
-      return;
-    }
-    try {
-      const parsed = JSON.parse(raw) as GymDiagramConfig[];
-      const valid = (parsed || []).filter((diagram) => (
-        Boolean(diagram.id)
-        && Boolean(diagram.exerciseName)
-        && ['maxWeight', 'totalVolume', 'totalReps', 'sets'].includes(diagram.metric)
-        && ['line', 'bar'].includes(diagram.style)
-      ));
-      queueMicrotask(() => {
-        setDiagramConfigs(valid);
-      });
-    } catch {
-      queueMicrotask(() => {
-        setDiagramConfigs([]);
-      });
-    } finally {
-      queueMicrotask(() => {
-        setDiagramConfigsLoaded(true);
-      });
-    }
-  }, [storageKey]);
-
-  useEffect(() => {
-    if (!diagramConfigsLoaded) return;
-    if (timelineExercises.length === 0) {
-      if (diagramConfigs.length > 0) {
-        queueMicrotask(() => {
-          setDiagramConfigs([]);
-        });
-      }
-      return;
-    }
-    if (diagramConfigs.length > 0) return;
-    queueMicrotask(() => {
-      setDiagramConfigs([{
-        id: crypto.randomUUID(),
-        exerciseName: timelineExercises[0],
-        metric: 'maxWeight',
-        style: 'line',
-      }]);
-    });
-  }, [timelineExercises, diagramConfigs.length, diagramConfigs, diagramConfigsLoaded]);
+  const defaultExercise = timelineExercises[0] || '';
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -253,17 +240,17 @@ export default function GymDashboard({ targetUserId }: { targetUserId?: string }
 
   function resetDiagramPicker() {
     setEditingDiagramId(null);
-    setPendingExercise(timelineExercises[0] || '');
-    setPendingMetric('maxWeight');
-    setPendingStyle('line');
+    setPendingExercise(defaultExercise);
+    setPendingMetric(DEFAULT_TIMELINE_METRIC);
+    setPendingStyle(DEFAULT_CHART_TYPE);
     setShowDiagramPicker(false);
   }
 
   function openNewDiagramPicker() {
     setEditingDiagramId(null);
-    setPendingExercise(timelineExercises[0] || '');
-    setPendingMetric('maxWeight');
-    setPendingStyle('line');
+    setPendingExercise(defaultExercise);
+    setPendingMetric(DEFAULT_TIMELINE_METRIC);
+    setPendingStyle(DEFAULT_CHART_TYPE);
     setShowDiagramPicker(true);
   }
 
@@ -287,7 +274,7 @@ export default function GymDashboard({ targetUserId }: { targetUserId?: string }
       return;
     }
     setDiagramConfigs((prev) => [...prev, {
-      id: crypto.randomUUID(),
+      id: createUniqueDiagramId(new Set(prev.map((diagram) => diagram.id))),
       exerciseName: pendingExercise,
       metric: pendingMetric,
       style: pendingStyle,
@@ -333,15 +320,15 @@ export default function GymDashboard({ targetUserId }: { targetUserId?: string }
     <Card title="Gym Dashboard">
       <div className="flex flex-col gap-4">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <div className="rounded-2xl bg-gradient-to-br from-red-50 to-red-100/60 border border-red-100 p-3 shadow-sm">
+          <div className={SUMMARY_CARD_CLASS}>
             <p className="text-xs text-red-700 font-medium">Today Sets</p>
             <p className="text-2xl font-bold text-red-600">{totalSetsToday}</p>
           </div>
-          <div className="rounded-2xl bg-gradient-to-br from-red-50 to-red-100/60 border border-red-100 p-3 shadow-sm">
+          <div className={SUMMARY_CARD_CLASS}>
             <p className="text-xs text-red-700 font-medium">Today Reps</p>
             <p className="text-2xl font-bold text-red-600">{totalRepsToday}</p>
           </div>
-          <div className="rounded-2xl bg-gradient-to-br from-red-50 to-red-100/60 border border-red-100 p-3 shadow-sm">
+          <div className={SUMMARY_CARD_CLASS}>
             <p className="text-xs text-red-700 font-medium">Today Volume</p>
             <p className="text-2xl font-bold text-red-600">{Math.round(totalVolumeToday)} kg</p>
           </div>
@@ -547,6 +534,7 @@ export default function GymDashboard({ targetUserId }: { targetUserId?: string }
 
                 <button
                   onClick={openNewDiagramPicker}
+                  aria-label="Add gym diagram"
                   className="w-full h-24 rounded-2xl border-2 border-dashed border-red-200 bg-red-50/80 hover:bg-red-50 transition-colors flex items-center justify-center text-red-400"
                 >
                   <Plus className="w-7 h-7" />
