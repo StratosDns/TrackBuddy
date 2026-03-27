@@ -64,7 +64,7 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
   const [savingName, setSavingName] = useState(false);
 
   // Date range state
-  const [range] = useState(DEFAULT_RANGE_DAYS);
+  const range = DEFAULT_RANGE_DAYS;
   const [useCustomRange, setUseCustomRange] = useState(false);
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
@@ -707,7 +707,7 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
                 </button>
                 {showTargetEditor && (
                   <div className="mt-3 flex flex-wrap items-center gap-2">
-                    <label htmlFor="target-water" className="text-xs font-medium text-gray-600">Water target (L)</label>
+                    <label htmlFor="target-water" className="text-xs font-medium text-gray-600">Water target</label>
                     <input
                       id="target-water"
                       type="number"
