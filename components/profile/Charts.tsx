@@ -44,7 +44,7 @@ export const DIAGRAM_METRIC_META: Record<DiagramMetric, { label: string; color: 
 
 export const DIAGRAM_METRIC_UNIT_OPTIONS: Record<DiagramMetric, string[]> = {
   calories: ['kcal', 'kJ'],
-  water: ['L', 'ml'],
+  water: ['L', 'ml', 'cL'],
   weight: ['kg', 'lb', 'g'],
   carbs: ['g', 'oz'],
   fats: ['g', 'oz'],
@@ -52,6 +52,7 @@ export const DIAGRAM_METRIC_UNIT_OPTIONS: Record<DiagramMetric, string[]> = {
 };
 
 const L_TO_ML = 1000;
+const L_TO_CL = 100;
 const KG_TO_G = 1000;
 const KG_TO_LB = 2.2046226218;
 const KCAL_TO_KJ = 4.184;
@@ -91,7 +92,9 @@ export function normalizeDiagramMetricUnits(value: unknown): DiagramMetricUnits 
 function convertDiagramValue(metric: DiagramMetric, value: number, units?: DiagramMetricUnits) {
   const unit = getDiagramMetricUnit(metric, units);
   if (metric === 'water') {
-    return unit === 'ml' ? value * L_TO_ML : value;
+    if (unit === 'ml') return value * L_TO_ML;
+    if (unit === 'cL') return value * L_TO_CL;
+    return value;
   }
   if (metric === 'weight') {
     if (unit === 'g') return value * KG_TO_G;

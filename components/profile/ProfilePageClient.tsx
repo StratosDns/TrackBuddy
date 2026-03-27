@@ -20,12 +20,7 @@ import {
 import GymDashboard from '@/components/profile/GymDashboard';
 import { User, Pencil, Check, X, Plus } from 'lucide-react';
 
-const RANGES = [
-  { label: '7 Days', days: 7 },
-  { label: '14 Days', days: 14 },
-  { label: '30 Days', days: 30 },
-  { label: '90 Days', days: 90 },
-];
+const DEFAULT_RANGE_DAYS = 30;
 
 interface ProfilePageClientProps {
   mode: 'diet' | 'gym';
@@ -69,7 +64,7 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
   const [savingName, setSavingName] = useState(false);
 
   // Date range state
-  const [range, setRange] = useState(30);
+  const [range] = useState(DEFAULT_RANGE_DAYS);
   const [useCustomRange, setUseCustomRange] = useState(false);
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
@@ -93,6 +88,7 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
   const [targetProteinInput, setTargetProteinInput] = useState(String(DEFAULT_TARGET_PROTEIN_G));
   const [targetCarbsInput, setTargetCarbsInput] = useState(String(DEFAULT_TARGET_CARBS_G));
   const [targetFatsInput, setTargetFatsInput] = useState(String(DEFAULT_TARGET_FATS_G));
+  const [showTargetEditor, setShowTargetEditor] = useState(false);
   const [ageInput, setAgeInput] = useState('');
   const [heightInput, setHeightInput] = useState('');
   const [displayWeightKg, setDisplayWeightKg] = useState<number | null>(null);
@@ -421,7 +417,6 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
   const targetProtein = profile?.target_protein_g ?? DEFAULT_TARGET_PROTEIN_G;
   const targetCarbs = profile?.target_carbs_g ?? DEFAULT_TARGET_CARBS_G;
   const targetFats = profile?.target_fats_g ?? DEFAULT_TARGET_FATS_G;
-  const targetWater = (profile?.target_water_ml ?? DEFAULT_TARGET_WATER_ML) / 1000;
   const macroTargetByKey: Record<string, number> = {
     protein: targetProtein,
     carbs: targetCarbs,
@@ -608,19 +603,6 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
           {/* Date range controls */}
           <div className="flex flex-col gap-3">
             <div className="flex gap-2 flex-wrap items-center">
-              {!useCustomRange && RANGES.map(({ label, days }) => (
-                <button
-                  key={days}
-                  onClick={() => setRange(days)}
-                  className={`px-4 py-1.5 text-sm rounded-xl font-medium border shadow-sm transition-all
-                    ${range === days
-                      ? 'bg-green-600 text-white border-green-600 shadow-green-200'
-                      : 'bg-white text-gray-600 border-gray-200 hover:border-green-400 hover:-translate-y-0.5'
-                    }`}
-                >
-                  {label}
-                </button>
-              ))}
               <button
                 onClick={handleCustomRangeToggle}
                 className={`px-4 py-1.5 text-sm rounded-xl font-medium border shadow-sm transition-all
@@ -716,50 +698,60 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
                   </div>
                 ))}
               </div>
-              <div className="mt-4 pt-3 border-t border-gray-100 flex flex-wrap items-center gap-2">
-                <label htmlFor="target-water" className="text-xs font-medium text-gray-600">Water target (L)</label>
-                <input
-                  id="target-water"
-                  type="number"
-                  min={0.1}
-                  step={0.1}
-                  value={targetWaterInput}
-                  onChange={(e) => setTargetWaterInput(e.target.value)}
-                  className="w-20 px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-                />
-                <label htmlFor="target-protein" className="text-xs font-medium text-gray-600">Protein</label>
-                <input
-                  id="target-protein"
-                  type="number"
-                  min={1}
-                  value={targetProteinInput}
-                  onChange={(e) => setTargetProteinInput(e.target.value)}
-                  className="w-16 px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-                />
-                <label htmlFor="target-carbs" className="text-xs font-medium text-gray-600">Carbs</label>
-                <input
-                  id="target-carbs"
-                  type="number"
-                  min={1}
-                  value={targetCarbsInput}
-                  onChange={(e) => setTargetCarbsInput(e.target.value)}
-                  className="w-16 px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-                />
-                <label htmlFor="target-fats" className="text-xs font-medium text-gray-600">Fats</label>
-                <input
-                  id="target-fats"
-                  type="number"
-                  min={1}
-                  value={targetFatsInput}
-                  onChange={(e) => setTargetFatsInput(e.target.value)}
-                  className="w-16 px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-                />
+              <div className="mt-4 pt-3 border-t border-gray-100">
                 <button
-                  onClick={saveMacroAndWaterTargets}
+                  onClick={() => setShowTargetEditor((prev) => !prev)}
                   className="px-3 py-1.5 text-xs rounded-lg border border-green-600 bg-green-600 text-white hover:bg-green-700"
                 >
-                  Save all targets
+                  Set Targets
                 </button>
+                {showTargetEditor && (
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <label htmlFor="target-water" className="text-xs font-medium text-gray-600">Water target (L)</label>
+                    <input
+                      id="target-water"
+                      type="number"
+                      min={0.1}
+                      step={0.1}
+                      value={targetWaterInput}
+                      onChange={(e) => setTargetWaterInput(e.target.value)}
+                      className="w-20 px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                    />
+                    <label htmlFor="target-protein" className="text-xs font-medium text-gray-600">Protein</label>
+                    <input
+                      id="target-protein"
+                      type="number"
+                      min={1}
+                      value={targetProteinInput}
+                      onChange={(e) => setTargetProteinInput(e.target.value)}
+                      className="w-16 px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                    />
+                    <label htmlFor="target-carbs" className="text-xs font-medium text-gray-600">Carbs</label>
+                    <input
+                      id="target-carbs"
+                      type="number"
+                      min={1}
+                      value={targetCarbsInput}
+                      onChange={(e) => setTargetCarbsInput(e.target.value)}
+                      className="w-16 px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                    />
+                    <label htmlFor="target-fats" className="text-xs font-medium text-gray-600">Fats</label>
+                    <input
+                      id="target-fats"
+                      type="number"
+                      min={1}
+                      value={targetFatsInput}
+                      onChange={(e) => setTargetFatsInput(e.target.value)}
+                      className="w-16 px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                    />
+                    <button
+                      onClick={saveMacroAndWaterTargets}
+                      className="px-3 py-1.5 text-xs rounded-lg border border-green-600 bg-green-600 text-white hover:bg-green-700"
+                    >
+                      Save all targets
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
 
