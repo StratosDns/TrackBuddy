@@ -4,6 +4,9 @@ export interface Profile {
   id: string;
   username: string;
   display_name: string;
+  age?: number | null;
+  height_cm?: number | null;
+  target_calories?: number | null;
   created_at: string;
 }
 
