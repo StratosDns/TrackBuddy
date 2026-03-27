@@ -14,6 +14,28 @@ create table if not exists public.profiles (
 
 alter table public.profiles
   add column if not exists target_calories integer not null default 2000 check (target_calories > 0);
+alter table public.profiles
+  add column if not exists age integer check (age is null or age > 0);
+alter table public.profiles
+  add column if not exists height_cm integer check (height_cm is null or height_cm > 0);
+alter table public.profiles
+  add column if not exists target_water_ml integer not null default 2000 check (target_water_ml > 0);
+alter table public.profiles
+  add column if not exists target_protein_g integer not null default 150 check (target_protein_g > 0);
+alter table public.profiles
+  add column if not exists target_carbs_g integer not null default 250 check (target_carbs_g > 0);
+alter table public.profiles
+  add column if not exists target_fats_g integer not null default 70 check (target_fats_g > 0);
+alter table public.profiles
+  add column if not exists friend_visibility jsonb not null default '{
+    "age": true,
+    "height": true,
+    "weight": true,
+    "calorie_target": true,
+    "macro_targets": true,
+    "water_target": true,
+    "diagrams": true
+  }'::jsonb;
 
 -- Row Level Security for profiles
 alter table public.profiles enable row level security;
