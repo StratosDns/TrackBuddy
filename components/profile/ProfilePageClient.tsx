@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { subDays, format, parseISO, isAfter, differenceInCalendarDays } from 'date-fns';
 import { createClient } from '@/lib/supabase/client';
 import { Food, FoodLog, WeightLog, WaterLog, Profile, calcMacros, sumMacros, ZERO_MACROS } from '@/lib/types';
+import { normalizeFriendVisibility } from '@/lib/profileVisibility';
 import Card from '@/components/ui/Card';
 import {
   CustomDiagramChart,
@@ -52,15 +53,6 @@ const DEFAULT_TARGET_PROTEIN_G = 150;
 const DEFAULT_TARGET_CARBS_G = 250;
 const DEFAULT_TARGET_FATS_G = 70;
 const MIN_MACRO_TOTAL = 1;
-const DEFAULT_FRIEND_VISIBILITY: Record<string, boolean> = {
-  age: true,
-  height: true,
-  weight: true,
-  calorie_target: true,
-  macro_targets: true,
-  water_target: true,
-  diagrams: true,
-};
 
 interface DiagramConfigRow {
   id: string;
@@ -104,7 +96,7 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
   const [ageInput, setAgeInput] = useState('');
   const [heightInput, setHeightInput] = useState('');
   const [displayWeightKg, setDisplayWeightKg] = useState<number | null>(null);
-  const [friendVisibility, setFriendVisibility] = useState<Record<string, boolean>>(DEFAULT_FRIEND_VISIBILITY);
+  const [friendVisibility, setFriendVisibility] = useState<Record<string, boolean>>(normalizeFriendVisibility(null));
 
   const resetDiagramPicker = useCallback(() => {
     setPendingMetrics([]);
@@ -148,7 +140,7 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
       setTargetFatsInput(String(DEFAULT_TARGET_FATS_G));
       setAgeInput('');
       setHeightInput('');
-      setFriendVisibility(DEFAULT_FRIEND_VISIBILITY);
+      setFriendVisibility(normalizeFriendVisibility(null));
     } else {
       setProfile(profileData);
       setDraftName(profileData.display_name);
@@ -180,11 +172,7 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
       );
       setAgeInput(profileWithTarget.age ? String(profileWithTarget.age) : '');
       setHeightInput(profileWithTarget.height_cm ? String(profileWithTarget.height_cm) : '');
-      const nextVisibility = (
-        profileWithTarget.friend_visibility
-        && typeof profileWithTarget.friend_visibility === 'object'
-        && !Array.isArray(profileWithTarget.friend_visibility)
-      ) ? { ...DEFAULT_FRIEND_VISIBILITY, ...profileWithTarget.friend_visibility } : DEFAULT_FRIEND_VISIBILITY;
+      const nextVisibility = normalizeFriendVisibility(profileWithTarget.friend_visibility);
       setFriendVisibility(nextVisibility);
     }
 
@@ -434,6 +422,11 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
   const targetCarbs = profile?.target_carbs_g ?? DEFAULT_TARGET_CARBS_G;
   const targetFats = profile?.target_fats_g ?? DEFAULT_TARGET_FATS_G;
   const targetWater = (profile?.target_water_ml ?? DEFAULT_TARGET_WATER_ML) / 1000;
+  const macroTargetByKey: Record<string, number> = {
+    protein: targetProtein,
+    carbs: targetCarbs,
+    fats: targetFats,
+  };
   const macroProgressItems = [
     {
       key: 'protein',
@@ -719,7 +712,7 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
                     <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
                       <div className={`h-full ${item.color}`} style={{ width: item.width }} />
                     </div>
-                    <span className="text-xs text-gray-500 w-16 text-right">{item.value}g / {item.key === 'protein' ? targetProtein : item.key === 'carbs' ? targetCarbs : targetFats}g</span>
+                    <span className="text-xs text-gray-500 w-16 text-right">{item.value}g / {macroTargetByKey[item.key]}g</span>
                   </div>
                 ))}
               </div>
@@ -768,7 +761,6 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
                   Save all targets
                 </button>
               </div>
-              <p className="text-xs text-gray-500 mt-2">Water target: {targetWater}L</p>
             </div>
 
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">

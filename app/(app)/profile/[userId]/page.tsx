@@ -24,6 +24,7 @@ import {
 import { Lock, UserPlus, UserCheck, Clock, ChevronLeft, X, Check, Pencil, Plus } from 'lucide-react';
 import Link from 'next/link';
 import { MODE_COOKIE, normalizeMode } from '@/lib/mode';
+import { normalizeFriendVisibility } from '@/lib/profileVisibility';
 
 const RANGES = [
   { label: '7 Days', days: 7 },
@@ -50,15 +51,6 @@ const DEFAULT_TARGET_PROTEIN_G = 150;
 const DEFAULT_TARGET_CARBS_G = 250;
 const DEFAULT_TARGET_FATS_G = 70;
 const DEFAULT_TARGET_WATER_ML = 2000;
-const DEFAULT_FRIEND_VISIBILITY: Record<string, boolean> = {
-  age: true,
-  height: true,
-  weight: true,
-  calorie_target: true,
-  macro_targets: true,
-  water_target: true,
-  diagrams: true,
-};
 
 function parseModeFromCookie(): 'diet' | 'gym' {
   if (typeof document === 'undefined') return 'diet';
@@ -409,11 +401,7 @@ export default function FriendProfilePage({
   const displayName = profile.display_name || profile.username;
   const isFriend = friendshipStatus === 'accepted';
   const isPending = friendshipStatus === 'pending';
-  const friendVisibility = (
-    profile.friend_visibility
-    && typeof profile.friend_visibility === 'object'
-    && !Array.isArray(profile.friend_visibility)
-  ) ? { ...DEFAULT_FRIEND_VISIBILITY, ...profile.friend_visibility } : DEFAULT_FRIEND_VISIBILITY;
+  const friendVisibility = normalizeFriendVisibility(profile.friend_visibility);
   const canSee = (key: string) => friendVisibility[key] !== false;
   const showValueLabels = range <= 10;
   const macroTargets = {

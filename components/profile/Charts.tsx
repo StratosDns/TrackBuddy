@@ -243,13 +243,13 @@ export function MacroChart({
         />
         <Legend />
         {visibleMacros.protein && typeof targets?.protein === 'number' && targets.protein > 0 && (
-          <ReferenceLine y={targets.protein} stroke="#3b82f6" strokeDasharray="4 4" label={{ value: 'Protein target', position: 'right', fill: '#3b82f6', fontSize: 10 }} />
+          <ReferenceLine y={targets.protein} stroke={DIAGRAM_METRIC_META.protein.color} strokeDasharray="4 4" label={{ value: 'Protein target', position: 'right', fill: DIAGRAM_METRIC_META.protein.color, fontSize: 10 }} />
         )}
         {visibleMacros.carbs && typeof targets?.carbs === 'number' && targets.carbs > 0 && (
-          <ReferenceLine y={targets.carbs} stroke="#eab308" strokeDasharray="4 4" label={{ value: 'Carbs target', position: 'right', fill: '#ca8a04', fontSize: 10 }} />
+          <ReferenceLine y={targets.carbs} stroke={DIAGRAM_METRIC_META.carbs.color} strokeDasharray="4 4" label={{ value: 'Carbs target', position: 'right', fill: DIAGRAM_METRIC_META.carbs.color, fontSize: 10 }} />
         )}
         {visibleMacros.fats && typeof targets?.fats === 'number' && targets.fats > 0 && (
-          <ReferenceLine y={targets.fats} stroke="#ef4444" strokeDasharray="4 4" label={{ value: 'Fats target', position: 'right', fill: '#dc2626', fontSize: 10 }} />
+          <ReferenceLine y={targets.fats} stroke={DIAGRAM_METRIC_META.fats.color} strokeDasharray="4 4" label={{ value: 'Fats target', position: 'right', fill: DIAGRAM_METRIC_META.fats.color, fontSize: 10 }} />
         )}
         {visibleMacros.protein && (
           <Bar dataKey="protein" fill="#3b82f6" name="Protein" radius={[4, 4, 0, 0]}>
