@@ -10,7 +10,7 @@ import { createClient } from '@/lib/supabase/client';
 import { WorkoutLog, WorkoutSetRow } from '@/lib/types';
 import Card from '@/components/ui/Card';
 import Input from '@/components/ui/Input';
-import { TrendingUp, LineChart as LineChartIcon, BarChart3 } from 'lucide-react';
+import { TrendingUp, LineChart as LineChartIcon, BarChart3, Pencil, X, Plus } from 'lucide-react';
 
 type ChartType = 'line' | 'bar';
 type TimelineMetric = 'maxWeight' | 'totalVolume' | 'totalReps' | 'sets';
@@ -23,6 +23,49 @@ const RANGE_PRESETS = [
   { label: '30 Days', days: 30 },
   { label: '90 Days', days: 90 },
 ];
+const GYM_DIAGRAM_STORAGE_PREFIX = 'tb_gym_diagrams_';
+const CHART_STYLE_LABELS: Record<ChartType, string> = {
+  line: 'Line',
+  bar: 'Bar',
+};
+const METRIC_LABELS: Record<TimelineMetric, string> = {
+  maxWeight: 'Max Weight',
+  totalVolume: 'Total Volume',
+  totalReps: 'Total Reps',
+  sets: 'Sets',
+};
+const VALID_METRICS = new Set<TimelineMetric>(Object.keys(METRIC_LABELS) as TimelineMetric[]);
+const VALID_CHART_STYLES = new Set<ChartType>(Object.keys(CHART_STYLE_LABELS) as ChartType[]);
+const SUMMARY_CARD_CLASS = 'rounded-2xl bg-gradient-to-br from-red-50 to-red-100/60 border border-red-100 p-3 shadow-sm';
+const DEFAULT_TIMELINE_METRIC: TimelineMetric = 'maxWeight';
+const DEFAULT_CHART_TYPE: ChartType = 'line';
+
+interface GymDiagramConfig {
+  id: string;
+  exerciseName: string;
+  metric: TimelineMetric;
+  style: ChartType;
+}
+
+function generateDiagramId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `gym-diagram-${Date.now()}-${Math.floor(Math.random() * 1_000_000_000)}`;
+}
+
+function createUniqueDiagramId(existingIds: Set<string>): string {
+  let id = generateDiagramId();
+  let attempts = 0;
+  while (existingIds.has(id) && attempts < 5) {
+    id = generateDiagramId();
+    attempts += 1;
+  }
+  if (existingIds.has(id)) {
+    throw new Error('Unable to generate unique gym diagram ID');
+  }
+  return id;
+}
 
 function parseSetRows(raw: unknown): WorkoutSetRow[] {
   if (!Array.isArray(raw)) return [];
@@ -45,6 +88,7 @@ function timelineFormatter(metric: TimelineMetric, value: number): string {
 }
 
 export default function GymDashboard({ targetUserId }: { targetUserId?: string }) {
+  const storageKey = `${GYM_DIAGRAM_STORAGE_PREFIX}${targetUserId || 'self'}`;
   const [workoutLogs, setWorkoutLogs] = useState<WorkoutLog[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -52,11 +96,29 @@ export default function GymDashboard({ targetUserId }: { targetUserId?: string }
   const [useCustomRange, setUseCustomRange] = useState(false);
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
-  const [timelineMetric, setTimelineMetric] = useState<TimelineMetric>('maxWeight');
-  const [chartType, setChartType] = useState<ChartType>('line');
   const [showMovingAverage, setShowMovingAverage] = useState(true);
   const [movingAverageWindow, setMovingAverageWindow] = useState(3);
-  const [selectedTimelineExercise, setSelectedTimelineExercise] = useState('');
+  const [diagramConfigs, setDiagramConfigs] = useState<GymDiagramConfig[]>(() => {
+    if (typeof window === 'undefined') return [];
+    const raw = window.localStorage.getItem(storageKey);
+    if (!raw) return [];
+    try {
+      const parsed = JSON.parse(raw) as GymDiagramConfig[];
+      return (parsed || []).filter((diagram) => (
+        Boolean(diagram.id)
+        && Boolean(diagram.exerciseName)
+        && VALID_METRICS.has(diagram.metric)
+        && VALID_CHART_STYLES.has(diagram.style)
+      ));
+    } catch {
+      return [];
+    }
+  });
+  const [showDiagramPicker, setShowDiagramPicker] = useState(false);
+  const [editingDiagramId, setEditingDiagramId] = useState<string | null>(null);
+  const [pendingExercise, setPendingExercise] = useState('');
+  const [pendingMetric, setPendingMetric] = useState<TimelineMetric>(DEFAULT_TIMELINE_METRIC);
+  const [pendingStyle, setPendingStyle] = useState<ChartType>(DEFAULT_CHART_TYPE);
 
   useEffect(() => {
     async function loadGymData() {
@@ -110,39 +172,47 @@ export default function GymDashboard({ targetUserId }: { targetUserId?: string }
 
     const dataByExercise: Record<string, {
       date: string;
-      metric: number;
-      movingAverage: number | null;
+      maxWeight: number;
+      totalVolume: number;
+      totalReps: number;
+      sets: number;
     }[]> = {};
 
     grouped.forEach((logs, exerciseName) => {
-      const byDate = new Map<string, number>();
+      const byDate = new Map<string, {
+        maxWeight: number;
+        totalVolume: number;
+        totalReps: number;
+        sets: number;
+      }>();
       for (const log of logs) {
         const sets = log.set_rows || [];
         const totalReps = sets.reduce((sum, setRow) => sum + setRow.reps, 0);
         const totalVolume = sets.reduce((sum, setRow) => sum + (setRow.reps * setRow.weight_kg), 0);
         const maxWeight = sets.reduce((max, setRow) => Math.max(max, setRow.weight_kg), 0);
-        const value = timelineMetric === 'maxWeight'
-          ? maxWeight
-          : timelineMetric === 'totalVolume'
-            ? totalVolume
-            : timelineMetric === 'totalReps'
-              ? totalReps
-              : sets.length;
-        byDate.set(log.date, (byDate.get(log.date) || 0) + value);
-      }
-
-      const points: { date: string; metric: number; movingAverage: number | null }[] = Array.from(byDate.entries())
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([date, metric]) => ({ date, metric, movingAverage: null }));
-
-      if (showMovingAverage && movingAverageWindow > 1) {
-        points.forEach((point, i) => {
-          const start = Math.max(0, i - movingAverageWindow + 1);
-          const window = points.slice(start, i + 1);
-          const average = window.reduce((sum, item) => sum + item.metric, 0) / window.length;
-          point.movingAverage = Math.round(average * 10) / 10;
+        const previous = byDate.get(log.date) || {
+          maxWeight: 0,
+          totalVolume: 0,
+          totalReps: 0,
+          sets: 0,
+        };
+        byDate.set(log.date, {
+          maxWeight: Math.max(previous.maxWeight, maxWeight),
+          totalVolume: previous.totalVolume + totalVolume,
+          totalReps: previous.totalReps + totalReps,
+          sets: previous.sets + sets.length,
         });
       }
+
+      const points: {
+        date: string;
+        maxWeight: number;
+        totalVolume: number;
+        totalReps: number;
+        sets: number;
+      }[] = Array.from(byDate.entries())
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([date, values]) => ({ date, ...values }));
 
       dataByExercise[exerciseName] = points;
     });
@@ -154,16 +224,88 @@ export default function GymDashboard({ targetUserId }: { targetUserId?: string }
     useCustomRange,
     customStart,
     customEnd,
-    timelineMetric,
-    showMovingAverage,
-    movingAverageWindow,
   ]);
 
   const timelineExercises = Object.keys(timelineData);
-  const activeTimelineExercise = timelineExercises.includes(selectedTimelineExercise)
-    ? selectedTimelineExercise
-    : timelineExercises[0] || '';
-  const timelinePoints = activeTimelineExercise ? timelineData[activeTimelineExercise] : [];
+  const defaultExercise = timelineExercises[0] || '';
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (diagramConfigs.length === 0) {
+      window.localStorage.removeItem(storageKey);
+      return;
+    }
+    window.localStorage.setItem(storageKey, JSON.stringify(diagramConfigs));
+  }, [diagramConfigs, storageKey]);
+
+  function resetDiagramPicker() {
+    setEditingDiagramId(null);
+    setPendingExercise(defaultExercise);
+    setPendingMetric(DEFAULT_TIMELINE_METRIC);
+    setPendingStyle(DEFAULT_CHART_TYPE);
+    setShowDiagramPicker(false);
+  }
+
+  function openNewDiagramPicker() {
+    setEditingDiagramId(null);
+    setPendingExercise(defaultExercise);
+    setPendingMetric(DEFAULT_TIMELINE_METRIC);
+    setPendingStyle(DEFAULT_CHART_TYPE);
+    setShowDiagramPicker(true);
+  }
+
+  function editDiagram(diagram: GymDiagramConfig) {
+    setEditingDiagramId(diagram.id);
+    setPendingExercise(diagram.exerciseName);
+    setPendingMetric(diagram.metric);
+    setPendingStyle(diagram.style);
+    setShowDiagramPicker(true);
+  }
+
+  function saveDiagram() {
+    if (!pendingExercise) return;
+    if (editingDiagramId) {
+      setDiagramConfigs((prev) => prev.map((diagram) => (
+        diagram.id === editingDiagramId
+          ? { ...diagram, exerciseName: pendingExercise, metric: pendingMetric, style: pendingStyle }
+          : diagram
+      )));
+      resetDiagramPicker();
+      return;
+    }
+    setDiagramConfigs((prev) => [...prev, {
+      id: createUniqueDiagramId(new Set(prev.map((diagram) => diagram.id))),
+      exerciseName: pendingExercise,
+      metric: pendingMetric,
+      style: pendingStyle,
+    }]);
+    resetDiagramPicker();
+  }
+
+  function removeDiagram(id: string) {
+    setDiagramConfigs((prev) => prev.filter((diagram) => diagram.id !== id));
+    if (editingDiagramId === id) {
+      resetDiagramPicker();
+    }
+  }
+
+  function getDiagramPoints(exerciseName: string, metric: TimelineMetric) {
+    const basePoints = timelineData[exerciseName] || [];
+    const points = basePoints.map((point) => ({
+      date: point.date,
+      metric: point[metric],
+      movingAverage: null as number | null,
+    }));
+    if (showMovingAverage && movingAverageWindow > 1) {
+      points.forEach((point, i) => {
+        const start = Math.max(0, i - movingAverageWindow + 1);
+        const window = points.slice(start, i + 1);
+        const average = window.reduce((sum, item) => sum + item.metric, 0) / window.length;
+        point.movingAverage = Math.round(average * 10) / 10;
+      });
+    }
+    return points;
+  }
 
   const today = format(new Date(), 'yyyy-MM-dd');
   const dayLogs = workoutLogs.filter((log) => log.date === today);
@@ -178,15 +320,15 @@ export default function GymDashboard({ targetUserId }: { targetUserId?: string }
     <Card title="Gym Dashboard">
       <div className="flex flex-col gap-4">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <div className="rounded-xl bg-red-50 border border-red-100 p-3">
+          <div className={SUMMARY_CARD_CLASS}>
             <p className="text-xs text-red-700 font-medium">Today Sets</p>
             <p className="text-2xl font-bold text-red-600">{totalSetsToday}</p>
           </div>
-          <div className="rounded-xl bg-red-50 border border-red-100 p-3">
+          <div className={SUMMARY_CARD_CLASS}>
             <p className="text-xs text-red-700 font-medium">Today Reps</p>
             <p className="text-2xl font-bold text-red-600">{totalRepsToday}</p>
           </div>
-          <div className="rounded-xl bg-red-50 border border-red-100 p-3">
+          <div className={SUMMARY_CARD_CLASS}>
             <p className="text-xs text-red-700 font-medium">Today Volume</p>
             <p className="text-2xl font-bold text-red-600">{Math.round(totalVolumeToday)} kg</p>
           </div>
@@ -200,10 +342,10 @@ export default function GymDashboard({ targetUserId }: { targetUserId?: string }
                 <button
                   key={days}
                   onClick={() => { setRange(days); setUseCustomRange(false); }}
-                  className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                  className={`px-3 py-1.5 rounded-xl text-xs font-medium border shadow-sm transition-all ${
                     !useCustomRange && range === days
-                      ? 'bg-red-600 text-white border-red-600'
-                      : 'bg-white text-gray-600 border-gray-200 hover:border-red-300'
+                      ? 'bg-red-600 text-white border-red-600 shadow-red-200'
+                      : 'bg-white text-gray-600 border-gray-200 hover:border-red-300 hover:-translate-y-0.5'
                   }`}
                 >
                   {label}
@@ -217,10 +359,10 @@ export default function GymDashboard({ targetUserId }: { targetUserId?: string }
                   }
                   setUseCustomRange((prev) => !prev);
                 }}
-                className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                className={`px-3 py-1.5 rounded-xl text-xs font-medium border shadow-sm transition-all ${
                   useCustomRange
-                    ? 'bg-red-600 text-white border-red-600'
-                    : 'bg-white text-gray-600 border-gray-200 hover:border-red-300'
+                    ? 'bg-red-600 text-white border-red-600 shadow-red-200'
+                    : 'bg-white text-gray-600 border-gray-200 hover:border-red-300 hover:-translate-y-0.5'
                 }`}
               >
                 Custom
@@ -249,47 +391,7 @@ export default function GymDashboard({ targetUserId }: { targetUserId?: string }
           )}
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
-          <div>
-            <label className="text-xs text-gray-500 font-medium">Metric</label>
-            <select
-              value={timelineMetric}
-              onChange={(e) => setTimelineMetric(e.target.value as TimelineMetric)}
-              className="mt-1 w-full rounded-lg border px-3 py-2 text-sm text-gray-900 border-gray-300 focus:border-red-500 focus:ring-2 focus:ring-red-200 outline-none"
-            >
-              <option value="maxWeight">Max Weight</option>
-              <option value="totalVolume">Total Volume</option>
-              <option value="totalReps">Total Reps</option>
-              <option value="sets">Sets</option>
-            </select>
-          </div>
-          <div>
-            <label className="text-xs text-gray-500 font-medium">Chart type</label>
-            <div className="mt-1 flex gap-2">
-              <button
-                onClick={() => setChartType('line')}
-                className={`px-3 py-2 rounded-lg text-xs font-medium border inline-flex items-center gap-1 ${
-                  chartType === 'line'
-                    ? 'bg-red-600 text-white border-red-600'
-                    : 'bg-white text-gray-600 border-gray-200 hover:border-red-300'
-                }`}
-              >
-                <LineChartIcon className="w-3.5 h-3.5" />
-                Line
-              </button>
-              <button
-                onClick={() => setChartType('bar')}
-                className={`px-3 py-2 rounded-lg text-xs font-medium border inline-flex items-center gap-1 ${
-                  chartType === 'bar'
-                    ? 'bg-red-600 text-white border-red-600'
-                    : 'bg-white text-gray-600 border-gray-200 hover:border-red-300'
-                }`}
-              >
-                <BarChart3 className="w-3.5 h-3.5" />
-                Bar
-              </button>
-            </div>
-          </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
             <label className="text-xs text-gray-500 font-medium">Moving average</label>
             <div className="mt-2 flex items-center gap-2">
@@ -325,86 +427,227 @@ export default function GymDashboard({ targetUserId }: { targetUserId?: string }
           </div>
         </div>
 
-        <div>
-          <p className="text-xs text-gray-500 font-medium mb-2">Exercise timeline</p>
-          {timelineExercises.length > 0 ? (
-            <div className="flex gap-2 flex-wrap">
-              {timelineExercises.map((name) => (
-                <button
-                  key={name}
-                  onClick={() => setSelectedTimelineExercise(name === selectedTimelineExercise ? '' : name)}
-                  className={`px-3 py-1 rounded-full text-xs font-medium ${
-                    name === activeTimelineExercise ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'
-                  }`}
-                >
-                  {name}
-                </button>
-              ))}
-            </div>
-          ) : (
-            <p className="text-sm text-gray-500">No timeline data yet. Start logging workouts on the Today tab.</p>
-          )}
-        </div>
+        <Card title="Diagrams">
+          <div className="flex flex-col gap-4">
+            {loading ? (
+              <div className="flex items-center justify-center h-40 text-sm text-gray-500">
+                Loading workout data...
+              </div>
+            ) : timelineExercises.length === 0 ? (
+              <p className="text-sm text-gray-500">No timeline data yet. Start logging workouts on the Today tab.</p>
+            ) : (
+              <>
+                {diagramConfigs.map((diagram) => {
+                  const diagramPoints = getDiagramPoints(diagram.exerciseName, diagram.metric);
+                  return (
+                    <div key={diagram.id} className="border border-gray-100 rounded-2xl p-4 shadow-sm">
+                      <div className="flex items-center justify-between gap-3 mb-3">
+                        <div className="flex flex-wrap gap-2">
+                          <span className="px-2.5 py-1 text-xs rounded-full border border-red-200 text-red-700 bg-red-50">
+                            {diagram.exerciseName}
+                          </span>
+                          <span className="px-2.5 py-1 text-xs rounded-full border border-gray-200 text-gray-700 bg-gray-50">
+                            {METRIC_LABELS[diagram.metric]}
+                          </span>
+                          <span className="px-2.5 py-1 text-xs rounded-full border border-gray-200 text-gray-500 bg-white">
+                            {CHART_STYLE_LABELS[diagram.style]}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => editDiagram(diagram)}
+                            className="p-1.5 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                            aria-label="Edit diagram"
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => removeDiagram(diagram.id)}
+                            className="p-1.5 rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                            aria-label="Remove diagram"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
 
-        <div className="h-64">
-          {loading ? (
-            <div className="flex items-center justify-center h-full text-sm text-gray-500">Loading workout data...</div>
-          ) : timelinePoints.length === 0 ? (
-            <div className="flex items-center justify-center h-full text-sm text-gray-500">
-              No timeline points available for current filters.
+                      <div className="h-64">
+                        {diagramPoints.length === 0 ? (
+                          <div className="flex items-center justify-center h-full text-sm text-gray-500">
+                            No timeline points available for current filters.
+                          </div>
+                        ) : (
+                          <ResponsiveContainer width="100%" height="100%">
+                            {diagram.style === 'line' ? (
+                              <LineChart data={diagramPoints} margin={{ top: 5, right: 5, bottom: 5, left: -20 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#fee2e2" />
+                                <XAxis dataKey="date" tickFormatter={(v) => format(parseISO(v), 'MMM d')} tick={{ fontSize: 11 }} />
+                                <YAxis tick={{ fontSize: 11 }} />
+                                <Tooltip
+                                  labelFormatter={(l) => format(parseISO(l as string), 'MMM d, yyyy')}
+                                  formatter={(v, name) =>
+                                    name === 'movingAverage'
+                                      ? [`${v}`, 'Moving Avg']
+                                      : [timelineFormatter(diagram.metric, Number(v)), 'Value']
+                                  }
+                                />
+                                <Legend />
+                                <Line
+                                  type="monotone"
+                                  dataKey="metric"
+                                  stroke="#dc2626"
+                                  strokeWidth={2}
+                                  dot={{ r: 3, fill: '#dc2626' }}
+                                  activeDot={{ r: 5 }}
+                                  name="Progress"
+                                />
+                                {showMovingAverage && (
+                                  <Line
+                                    type="monotone"
+                                    dataKey="movingAverage"
+                                    stroke="#fb7185"
+                                    strokeWidth={2}
+                                    strokeDasharray="4 4"
+                                    dot={false}
+                                    name="Moving Avg"
+                                  />
+                                )}
+                              </LineChart>
+                            ) : (
+                              <BarChart data={diagramPoints} margin={{ top: 5, right: 5, bottom: 5, left: -20 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#fee2e2" />
+                                <XAxis dataKey="date" tickFormatter={(v) => format(parseISO(v), 'MMM d')} tick={{ fontSize: 11 }} />
+                                <YAxis tick={{ fontSize: 11 }} />
+                                <Tooltip
+                                  labelFormatter={(l) => format(parseISO(l as string), 'MMM d, yyyy')}
+                                  formatter={(v) => [timelineFormatter(diagram.metric, Number(v)), 'Value']}
+                                />
+                                <Bar dataKey="metric" fill="#dc2626" radius={[4, 4, 0, 0]} name="Progress" />
+                              </BarChart>
+                            )}
+                          </ResponsiveContainer>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+
+                <button
+                  onClick={openNewDiagramPicker}
+                  aria-label="Add gym diagram"
+                  className="w-full h-24 rounded-2xl border-2 border-dashed border-red-200 bg-red-50/80 hover:bg-red-50 transition-colors flex items-center justify-center text-red-400"
+                >
+                  <Plus className="w-7 h-7" />
+                </button>
+              </>
+            )}
+          </div>
+        </Card>
+
+        {showDiagramPicker && (
+          <div
+            className="fixed inset-0 z-50 bg-black/30 flex items-center justify-center p-4"
+            role="dialog"
+            aria-modal="true"
+          >
+            <div className="w-full max-w-lg bg-white rounded-xl shadow-xl border border-gray-100 p-5">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">
+                  {editingDiagramId ? 'Edit Diagram' : 'Add Diagram'}
+                </h3>
+                <button
+                  onClick={resetDiagramPicker}
+                  className="p-1 rounded text-gray-400 hover:bg-gray-100"
+                  aria-label="Close diagram picker"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="mb-4">
+                <p className="text-sm font-medium text-gray-700 mb-2">Exercise</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-52 overflow-auto pr-1">
+                  {timelineExercises.map((exercise) => (
+                    <button
+                      key={exercise}
+                      onClick={() => setPendingExercise(exercise)}
+                      className={`px-3 py-2 text-sm rounded-xl border shadow-sm transition-all text-left ${
+                        pendingExercise === exercise
+                          ? 'bg-red-600 text-white border-red-600 shadow-red-200'
+                          : 'bg-white text-gray-700 border-gray-200 hover:border-red-300 hover:-translate-y-0.5'
+                      }`}
+                    >
+                      {exercise}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="mb-4">
+                <p className="text-sm font-medium text-gray-700 mb-2">Metric</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {(Object.keys(METRIC_LABELS) as TimelineMetric[]).map((metric) => (
+                    <button
+                      key={metric}
+                      onClick={() => setPendingMetric(metric)}
+                      className={`px-3 py-2 text-sm rounded-xl border shadow-sm transition-all text-left ${
+                        pendingMetric === metric
+                          ? 'bg-red-600 text-white border-red-600 shadow-red-200'
+                          : 'bg-white text-gray-700 border-gray-200 hover:border-red-300 hover:-translate-y-0.5'
+                      }`}
+                    >
+                      {METRIC_LABELS[metric]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="mb-5">
+                <p className="text-sm font-medium text-gray-700 mb-2">Chart type</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => setPendingStyle('line')}
+                    className={`px-3 py-2 text-sm rounded-xl border shadow-sm transition-all inline-flex items-center gap-1.5 ${
+                      pendingStyle === 'line'
+                        ? 'bg-red-600 text-white border-red-600 shadow-red-200'
+                        : 'bg-white text-gray-700 border-gray-200 hover:border-red-300 hover:-translate-y-0.5'
+                    }`}
+                  >
+                    <LineChartIcon className="w-4 h-4" />
+                    Line
+                  </button>
+                  <button
+                    onClick={() => setPendingStyle('bar')}
+                    className={`px-3 py-2 text-sm rounded-xl border shadow-sm transition-all inline-flex items-center gap-1.5 ${
+                      pendingStyle === 'bar'
+                        ? 'bg-red-600 text-white border-red-600 shadow-red-200'
+                        : 'bg-white text-gray-700 border-gray-200 hover:border-red-300 hover:-translate-y-0.5'
+                    }`}
+                  >
+                    <BarChart3 className="w-4 h-4" />
+                    Bar
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2">
+                <button
+                  onClick={resetDiagramPicker}
+                  className="px-4 py-2 text-sm rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={saveDiagram}
+                  disabled={!pendingExercise}
+                  className="px-4 py-2 text-sm rounded-xl border border-red-600 bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {editingDiagramId ? 'Save Diagram' : 'Add Diagram'}
+                </button>
+              </div>
             </div>
-          ) : (
-            <ResponsiveContainer width="100%" height="100%">
-              {chartType === 'line' ? (
-                <LineChart data={timelinePoints} margin={{ top: 5, right: 5, bottom: 5, left: -20 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#fee2e2" />
-                  <XAxis dataKey="date" tickFormatter={(v) => format(parseISO(v), 'MMM d')} tick={{ fontSize: 11 }} />
-                  <YAxis tick={{ fontSize: 11 }} />
-                  <Tooltip
-                    labelFormatter={(l) => format(parseISO(l as string), 'MMM d, yyyy')}
-                    formatter={(v, name) =>
-                      name === 'movingAverage'
-                        ? [`${v}`, 'Moving Avg']
-                        : [timelineFormatter(timelineMetric, Number(v)), 'Value']
-                    }
-                  />
-                  <Legend />
-                  <Line
-                    type="monotone"
-                    dataKey="metric"
-                    stroke="#dc2626"
-                    strokeWidth={2}
-                    dot={{ r: 3, fill: '#dc2626' }}
-                    activeDot={{ r: 5 }}
-                    name="Progress"
-                  />
-                  {showMovingAverage && (
-                    <Line
-                      type="monotone"
-                      dataKey="movingAverage"
-                      stroke="#fb7185"
-                      strokeWidth={2}
-                      strokeDasharray="4 4"
-                      dot={false}
-                      name="Moving Avg"
-                    />
-                  )}
-                </LineChart>
-              ) : (
-                <BarChart data={timelinePoints} margin={{ top: 5, right: 5, bottom: 5, left: -20 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#fee2e2" />
-                  <XAxis dataKey="date" tickFormatter={(v) => format(parseISO(v), 'MMM d')} tick={{ fontSize: 11 }} />
-                  <YAxis tick={{ fontSize: 11 }} />
-                  <Tooltip
-                    labelFormatter={(l) => format(parseISO(l as string), 'MMM d, yyyy')}
-                    formatter={(v) => [timelineFormatter(timelineMetric, Number(v)), 'Value']}
-                  />
-                  <Bar dataKey="metric" fill="#dc2626" radius={[4, 4, 0, 0]} name="Progress" />
-                </BarChart>
-              )}
-            </ResponsiveContainer>
-          )}
-        </div>
+          </div>
+        )}
 
         <div className="rounded-xl border border-red-100 bg-red-50 p-3">
           <div className="flex items-center gap-2 text-red-700">
