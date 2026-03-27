@@ -56,7 +56,7 @@ const L_TO_CL = 100;
 const KG_TO_G = 1000;
 const KG_TO_LB = 2.2046226218;
 const KCAL_TO_KJ = 4.184;
-const KCAL_TO_CAL = 1000;
+const KCAL_TO_SMALL_CALORIES = 1000;
 const G_TO_OZ = 0.0352739619;
 const G_TO_MG = 1000;
 const G_TO_KG = 0.001;
@@ -109,7 +109,7 @@ function convertDiagramValue(metric: DiagramMetric, value: number, units?: Diagr
     return unit === 'lb' ? value * KG_TO_LB : value;
   }
   if (metric === 'calories') {
-    if (unit === 'cal') return value * KCAL_TO_CAL;
+    if (unit === 'cal') return value * KCAL_TO_SMALL_CALORIES;
     return unit === 'kJ' ? value * KCAL_TO_KJ : value;
   }
   if (metric === 'carbs' || metric === 'fats' || metric === 'protein') {

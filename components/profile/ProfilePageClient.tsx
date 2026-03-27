@@ -21,6 +21,7 @@ import GymDashboard from '@/components/profile/GymDashboard';
 import { User, Pencil, Check, X, Plus } from 'lucide-react';
 
 const DEFAULT_RANGE_DAYS = 30;
+const DATA_FETCH_LOOKBACK_DAYS = 180;
 
 interface ProfilePageClientProps {
   mode: 'diet' | 'gym';
@@ -54,6 +55,14 @@ interface DiagramConfigRow {
   metrics: string[];
   style: string;
   metric_units?: unknown;
+}
+
+function getDefaultDiagramRange(today: string) {
+  const todayDate = parseISO(today);
+  return {
+    start: format(subDays(todayDate, DEFAULT_RANGE_DAYS - 1), 'yyyy-MM-dd'),
+    end: today,
+  };
 }
 
 export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
@@ -167,21 +176,28 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
     }
 
     const todayDate = format(new Date(), 'yyyy-MM-dd');
+    const fetchStartDate = format(subDays(new Date(), DATA_FETCH_LOOKBACK_DAYS - 1), 'yyyy-MM-dd');
     const [logsRes, weightsRes, waterRes, diagramsRes, todayWeightRes, latestWeightRes] = await Promise.all([
       supabase
         .from('food_logs')
         .select('*, food:foods(*)')
         .eq('user_id', user.id)
+        .gte('date', fetchStartDate)
+        .lte('date', todayDate)
         .order('date'),
       supabase
         .from('weight_logs')
         .select('*')
         .eq('user_id', user.id)
+        .gte('date', fetchStartDate)
+        .lte('date', todayDate)
         .order('date'),
       supabase
         .from('water_logs')
         .select('*')
         .eq('user_id', user.id)
+        .gte('date', fetchStartDate)
+        .lte('date', todayDate)
         .order('date'),
       supabase
         .from('diagram_configs')
@@ -217,11 +233,10 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
       .filter((row) => row.metrics.length > 0);
     setDiagramConfigs(normalizedDiagrams);
     setDiagramRanges((prev) => {
-      const defaultEnd = format(new Date(), 'yyyy-MM-dd');
-      const defaultStart = format(subDays(new Date(), DEFAULT_RANGE_DAYS - 1), 'yyyy-MM-dd');
+      const defaultRange = getDefaultDiagramRange(todayDate);
       const next: Record<string, { start: string; end: string }> = {};
       for (const diagram of normalizedDiagrams) {
-        next[diagram.id] = prev[diagram.id] || { start: defaultStart, end: defaultEnd };
+        next[diagram.id] = prev[diagram.id] || defaultRange;
       }
       return next;
     });
@@ -336,10 +351,7 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
   const today = format(new Date(), 'yyyy-MM-dd');
   function setDiagramRangeValue(id: string, key: 'start' | 'end', value: string) {
     setDiagramRanges((prev) => {
-      const existing = prev[id] || {
-        start: format(subDays(new Date(), DEFAULT_RANGE_DAYS - 1), 'yyyy-MM-dd'),
-        end: today,
-      };
+      const existing = prev[id] || getDefaultDiagramRange(today);
       return {
         ...prev,
         [id]: {
@@ -379,6 +391,29 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
 
     return Object.values(byDate).sort((a, b) => a.date.localeCompare(b.date));
   }, [macroData, weightData, waterData]);
+  const diagramRenderData = useMemo(() => {
+    const fallbackRange = getDefaultDiagramRange(today);
+    return diagramConfigs.map((diagram) => {
+      const configuredRange = diagramRanges[diagram.id] || fallbackRange;
+      let startDate = configuredRange.start || fallbackRange.start;
+      let endDate = configuredRange.end || fallbackRange.end;
+      if (isAfter(parseISO(startDate), parseISO(endDate))) {
+        [startDate, endDate] = [endDate, startDate];
+      }
+      const chartData = diagramData.filter((point) => (
+        point.date >= startDate && point.date <= endDate
+      ));
+      const rangeDays = Math.abs(
+        differenceInCalendarDays(parseISO(endDate), parseISO(startDate))
+      ) + 1;
+      return {
+        diagram,
+        configuredRange,
+        chartData,
+        rangeDays,
+      };
+    });
+  }, [diagramConfigs, diagramRanges, diagramData, today]);
 
   const latestMacro = macroData.length > 0 ? macroData[macroData.length - 1] : null;
   const targetCalories = profile?.target_calories ?? DEFAULT_TARGET_CALORIES;
@@ -780,26 +815,8 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
 
           <Card title="Diagrams" className="rounded-2xl shadow-sm">
             <div className="flex flex-col gap-4">
-              {diagramConfigs.map((diagram) => (
-                (() => {
-                  const fallbackRange = {
-                    start: format(subDays(new Date(), DEFAULT_RANGE_DAYS - 1), 'yyyy-MM-dd'),
-                    end: today,
-                  };
-                  const configuredRange = diagramRanges[diagram.id] || fallbackRange;
-                  let startDate = configuredRange.start || fallbackRange.start;
-                  let endDate = configuredRange.end || fallbackRange.end;
-                  if (isAfter(parseISO(startDate), parseISO(endDate))) {
-                    [startDate, endDate] = [endDate, startDate];
-                  }
-                  const chartDataForDiagram = diagramData.filter((point) => (
-                    point.date >= startDate && point.date <= endDate
-                  ));
-                  const rangeDays = Math.abs(
-                    differenceInCalendarDays(parseISO(endDate), parseISO(startDate))
-                  ) + 1;
-                  return (
-                  <div key={diagram.id} className="border border-gray-100 rounded-2xl p-4 shadow-sm bg-white">
+              {diagramRenderData.map(({ diagram, configuredRange, chartData, rangeDays }) => (
+                <div key={diagram.id} className="border border-gray-100 rounded-2xl p-4 shadow-sm bg-white">
                   <div className="flex items-center justify-between gap-3 mb-3">
                     <div className="flex flex-wrap gap-2">
                       {diagram.metrics.map((metric) => (
@@ -853,7 +870,7 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
                     </label>
                   </div>
                   <CustomDiagramChart
-                    data={chartDataForDiagram}
+                    data={chartData}
                     metrics={diagram.metrics}
                     style={diagram.style}
                     metricUnits={diagram.metricUnits}
@@ -861,8 +878,6 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
                     showValueLabels={rangeDays <= 10}
                   />
                 </div>
-                );
-                })()
               ))}
 
               <button
