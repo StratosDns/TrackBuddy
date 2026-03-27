@@ -75,6 +75,13 @@ interface MacroTargets {
   protein?: number | null;
   carbs?: number | null;
   fats?: number | null;
+  calories?: number | null;
+  water?: number | null;
+}
+
+export interface DiagramAxisDomain {
+  min?: number;
+  max?: number;
 }
 
 export function getDiagramMetricUnit(metric: DiagramMetric, units?: DiagramMetricUnits) {
@@ -236,6 +243,7 @@ export function MacroChart({
   }
 
   const noneVisible = !visibleMacros.protein && !visibleMacros.carbs && !visibleMacros.fats;
+  const visibleMacroCount = Number(visibleMacros.protein) + Number(visibleMacros.carbs) + Number(visibleMacros.fats);
   if (noneVisible) {
     return (
       <div className="flex items-center justify-center h-40 text-sm text-gray-400">
@@ -258,7 +266,7 @@ export function MacroChart({
           labelFormatter={(l) => format(parseISO(l as string), 'MMM d, yyyy')}
           formatter={(v, name) => [`${v}g`, name]}
         />
-        <Legend />
+        {visibleMacroCount > 1 && <Legend />}
         {visibleMacros.protein && typeof targets?.protein === 'number' && targets.protein > 0 && (
           <ReferenceLine y={targets.protein} stroke={DIAGRAM_METRIC_META.protein.color} strokeDasharray="4 4" label={{ value: 'Protein target', position: 'right', fill: DIAGRAM_METRIC_META.protein.color, fontSize: 10 }} />
         )}
@@ -300,6 +308,7 @@ export function CustomDiagramChart({
   style,
   metricUnits,
   macroTargets,
+  axisDomain,
   showValueLabels = false,
 }: {
   data: DiagramChartDataPoint[];
@@ -307,6 +316,7 @@ export function CustomDiagramChart({
   style: DiagramStyle;
   metricUnits?: DiagramMetricUnits;
   macroTargets?: MacroTargets;
+  axisDomain?: DiagramAxisDomain;
   showValueLabels?: boolean;
 }) {
   if (data.length === 0) {
@@ -337,6 +347,10 @@ export function CustomDiagramChart({
   });
 
   const yAxisUnit = metrics.length === 1 ? getDiagramMetricUnit(metrics[0], metricUnits) : undefined;
+  const yAxisDomain: [number | 'auto', number | 'auto'] = [
+    typeof axisDomain?.min === 'number' ? axisDomain.min : 'auto',
+    typeof axisDomain?.max === 'number' ? axisDomain.max : 'auto',
+  ];
 
   const sharedElements = (
     <>
@@ -346,7 +360,7 @@ export function CustomDiagramChart({
         tickFormatter={(v) => format(parseISO(v), 'MMM d')}
         tick={{ fontSize: 11 }}
       />
-      <YAxis tick={{ fontSize: 11 }} unit={yAxisUnit} />
+      <YAxis tick={{ fontSize: 11 }} unit={yAxisUnit} domain={yAxisDomain} />
       <Tooltip
         labelFormatter={(l) => format(parseISO(l as string), 'MMM d, yyyy')}
         formatter={(v, _name, item) => {
@@ -354,7 +368,7 @@ export function CustomDiagramChart({
           return formatDiagramTooltipValue(v as string | number, metric, metricUnits);
         }}
       />
-      <Legend />
+      {metrics.length > 1 && <Legend />}
       {metrics.includes('protein') && typeof macroTargets?.protein === 'number' && macroTargets.protein > 0 && (
         <ReferenceLine y={convertDiagramValue('protein', macroTargets.protein, metricUnits)} stroke={DIAGRAM_METRIC_META.protein.color} strokeDasharray="4 4" label={{ value: 'Protein target', position: 'right', fill: DIAGRAM_METRIC_META.protein.color, fontSize: 10 }} />
       )}
@@ -363,6 +377,12 @@ export function CustomDiagramChart({
       )}
       {metrics.includes('fats') && typeof macroTargets?.fats === 'number' && macroTargets.fats > 0 && (
         <ReferenceLine y={convertDiagramValue('fats', macroTargets.fats, metricUnits)} stroke={DIAGRAM_METRIC_META.fats.color} strokeDasharray="4 4" label={{ value: 'Fats target', position: 'right', fill: DIAGRAM_METRIC_META.fats.color, fontSize: 10 }} />
+      )}
+      {metrics.includes('calories') && typeof macroTargets?.calories === 'number' && macroTargets.calories > 0 && (
+        <ReferenceLine y={convertDiagramValue('calories', macroTargets.calories, metricUnits)} stroke={DIAGRAM_METRIC_META.calories.color} strokeDasharray="4 4" label={{ value: 'Calories target', position: 'right', fill: DIAGRAM_METRIC_META.calories.color, fontSize: 10 }} />
+      )}
+      {metrics.includes('water') && typeof macroTargets?.water === 'number' && macroTargets.water > 0 && (
+        <ReferenceLine y={convertDiagramValue('water', macroTargets.water, metricUnits)} stroke={DIAGRAM_METRIC_META.water.color} strokeDasharray="4 4" label={{ value: 'Water target', position: 'right', fill: DIAGRAM_METRIC_META.water.color, fontSize: 10 }} />
       )}
     </>
   );

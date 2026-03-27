@@ -36,6 +36,17 @@ interface DiagramConfig {
   id: string;
   metrics: DiagramMetric[];
   style: DiagramStyle;
+  axisDomain?: { min?: number; max?: number };
+}
+
+function normalizeAxisValue(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+function parseAxisInput(value: string): number | null {
+  if (!value.trim()) return null;
+  const parsed = Number(value.trim());
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 const DIAGRAM_METRICS: DiagramMetric[] = ['calories', 'water', 'weight', 'carbs', 'fats', 'protein'];
@@ -51,6 +62,7 @@ const DEFAULT_TARGET_PROTEIN_G = 150;
 const DEFAULT_TARGET_CARBS_G = 250;
 const DEFAULT_TARGET_FATS_G = 70;
 const DEFAULT_TARGET_WATER_ML = 2000;
+const DEFAULT_TARGET_CALORIES = 2000;
 
 function parseModeFromCookie(): 'diet' | 'gym' {
   if (typeof document === 'undefined') return 'diet';
@@ -68,21 +80,31 @@ function normalizeDiagramConfigs(source: unknown): DiagramConfig[] {
   const validMetrics = new Set<DiagramMetric>(DIAGRAM_METRICS);
   const validStyles = new Set<DiagramStyle>(DIAGRAM_STYLES);
 
-  return source
-    .map((row) => {
-      if (!row || typeof row !== 'object') return null;
-      const value = row as { id?: unknown; metrics?: unknown; style?: unknown };
-      const metrics = Array.isArray(value.metrics)
-        ? value.metrics.filter((metric): metric is DiagramMetric => validMetrics.has(metric as DiagramMetric))
-        : [];
-      if (metrics.length === 0) return null;
-      return {
-        id: typeof value.id === 'string' ? value.id : crypto.randomUUID(),
-        metrics,
-        style: validStyles.has(value.style as DiagramStyle) ? (value.style as DiagramStyle) : 'bar',
-      };
-    })
-    .filter((row): row is DiagramConfig => row !== null);
+  return source.reduce<DiagramConfig[]>((acc, row) => {
+    if (!row || typeof row !== 'object') return acc;
+    const value = row as {
+      id?: unknown;
+      metrics?: unknown;
+      style?: unknown;
+      axis_min?: unknown;
+      axis_max?: unknown;
+      axisDomain?: { min?: unknown; max?: unknown };
+    };
+    const metrics = Array.isArray(value.metrics)
+      ? value.metrics.filter((metric): metric is DiagramMetric => validMetrics.has(metric as DiagramMetric))
+      : [];
+    if (metrics.length === 0) return acc;
+    acc.push({
+      id: typeof value.id === 'string' ? value.id : crypto.randomUUID(),
+      metrics,
+      style: validStyles.has(value.style as DiagramStyle) ? (value.style as DiagramStyle) : 'bar',
+      axisDomain: {
+        min: normalizeAxisValue(value.axis_min ?? value.axisDomain?.min),
+        max: normalizeAxisValue(value.axis_max ?? value.axisDomain?.max),
+      },
+    });
+    return acc;
+  }, []);
 }
 
 function isDiagramStyle(value: string): value is DiagramStyle {
@@ -118,6 +140,8 @@ export default function FriendProfilePage({
   const [showDiagramPicker, setShowDiagramPicker] = useState(false);
   const [pendingMetrics, setPendingMetrics] = useState<DiagramMetric[]>([]);
   const [pendingStyle, setPendingStyle] = useState<DiagramStyle>('bar');
+  const [pendingAxisMin, setPendingAxisMin] = useState('');
+  const [pendingAxisMax, setPendingAxisMax] = useState('');
   const [editingDiagramId, setEditingDiagramId] = useState<string | null>(null);
 
   function buildFriendDiagramStorageKey(targetUserId: string) {
@@ -138,6 +162,8 @@ export default function FriendProfilePage({
   function resetDiagramPicker() {
     setPendingMetrics([]);
     setPendingStyle('bar');
+    setPendingAxisMin('');
+    setPendingAxisMax('');
     setEditingDiagramId(null);
     setShowDiagramPicker(false);
   }
@@ -219,7 +245,7 @@ export default function FriendProfilePage({
         .order('date'),
       supabase
         .from('diagram_configs')
-        .select('id, metrics, style')
+        .select('id, metrics, style, axis_min, axis_max')
         .eq('user_id', userId)
         .order('created_at'),
     ]);
@@ -301,6 +327,8 @@ export default function FriendProfilePage({
     setEditingDiagramId(null);
     setPendingMetrics([]);
     setPendingStyle('bar');
+    setPendingAxisMin('');
+    setPendingAxisMax('');
     setShowDiagramPicker(true);
   }
 
@@ -308,21 +336,37 @@ export default function FriendProfilePage({
     setEditingDiagramId(diagram.id);
     setPendingMetrics([...diagram.metrics]);
     setPendingStyle(diagram.style);
+    setPendingAxisMin(
+      typeof diagram.axisDomain?.min === 'number' ? String(diagram.axisDomain.min) : ''
+    );
+    setPendingAxisMax(
+      typeof diagram.axisDomain?.max === 'number' ? String(diagram.axisDomain.max) : ''
+    );
     setShowDiagramPicker(true);
   }
 
   function saveDiagram() {
     if (pendingMetrics.length === 0) return;
+    let axisMin = parseAxisInput(pendingAxisMin);
+    let axisMax = parseAxisInput(pendingAxisMax);
+    if (axisMin !== null && axisMax !== null && axisMin > axisMax) {
+      [axisMin, axisMax] = [axisMax, axisMin];
+    }
+    const axisDomain = {
+      min: axisMin ?? undefined,
+      max: axisMax ?? undefined,
+    };
     const nextConfigs = editingDiagramId
       ? diagramConfigs.map((diagram) => (
         diagram.id === editingDiagramId
-          ? { ...diagram, metrics: [...pendingMetrics], style: pendingStyle }
+          ? { ...diagram, metrics: [...pendingMetrics], style: pendingStyle, axisDomain }
           : diagram
       ))
       : [...diagramConfigs, {
         id: crypto.randomUUID(),
         metrics: [...pendingMetrics],
         style: pendingStyle,
+        axisDomain,
       }];
     setDiagramConfigs(nextConfigs);
     persistDiagramConfigsToLocalStorage(nextConfigs);
@@ -410,6 +454,13 @@ export default function FriendProfilePage({
     fats: profile.target_fats_g ?? DEFAULT_TARGET_FATS_G,
   };
   const waterTargetL = (profile.target_water_ml ?? DEFAULT_TARGET_WATER_ML) / 1000;
+  const diagramTargets = {
+    protein: canSee('macro_targets') ? macroTargets.protein : undefined,
+    carbs: canSee('macro_targets') ? macroTargets.carbs : undefined,
+    fats: canSee('macro_targets') ? macroTargets.fats : undefined,
+    calories: canSee('calorie_target') ? (profile.target_calories ?? DEFAULT_TARGET_CALORIES) : undefined,
+    water: canSee('water_target') ? waterTargetL : undefined,
+  };
   const latestKnownWeight = weightData.length > 0 ? weightData[weightData.length - 1].weight : null;
 
   // Group today's logs by meal
@@ -643,7 +694,8 @@ export default function FriendProfilePage({
                               data={diagramData}
                               metrics={diagram.metrics}
                               style={diagram.style}
-                              macroTargets={canSee('macro_targets') ? macroTargets : undefined}
+                              axisDomain={diagram.axisDomain}
+                              macroTargets={diagramTargets}
                               showValueLabels={showValueLabels}
                             />
                           </div>
@@ -773,6 +825,32 @@ export default function FriendProfilePage({
                 <option value="stackedBar">{DIAGRAM_STYLE_LABELS.stackedBar}</option>
                 <option value="stepLine">{DIAGRAM_STYLE_LABELS.stepLine}</option>
               </select>
+            </div>
+
+            <div className="mb-5">
+              <p className="text-sm font-medium text-gray-700 mb-2">Y-axis range (optional)</p>
+              <div className="grid grid-cols-2 gap-2">
+                <label className="flex items-center justify-between gap-3 px-3 py-2 rounded-xl border border-gray-200 bg-gray-50">
+                  <span className="text-sm text-gray-700">Min</span>
+                  <input
+                    type="number"
+                    value={pendingAxisMin}
+                    onChange={(e) => setPendingAxisMin(e.target.value)}
+                    className="w-24 px-2 py-1 border border-gray-200 rounded-lg text-xs bg-white"
+                    placeholder="auto"
+                  />
+                </label>
+                <label className="flex items-center justify-between gap-3 px-3 py-2 rounded-xl border border-gray-200 bg-gray-50">
+                  <span className="text-sm text-gray-700">Max</span>
+                  <input
+                    type="number"
+                    value={pendingAxisMax}
+                    onChange={(e) => setPendingAxisMax(e.target.value)}
+                    className="w-24 px-2 py-1 border border-gray-200 rounded-lg text-xs bg-white"
+                    placeholder="auto"
+                  />
+                </label>
+              </div>
             </div>
 
             <div className="flex justify-end gap-2">
