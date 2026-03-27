@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { subDays, format, parseISO, isAfter } from 'date-fns';
+import { subDays, format, parseISO, isAfter, differenceInCalendarDays } from 'date-fns';
 import { createClient } from '@/lib/supabase/client';
 import { Food, FoodLog, WeightLog, WaterLog, Profile, calcMacros, sumMacros, ZERO_MACROS } from '@/lib/types';
 import Card from '@/components/ui/Card';
@@ -47,7 +47,20 @@ const DIAGRAM_STYLE_LABELS: Record<DiagramStyle, string> = {
   stepLine: 'Step Line',
 };
 const DEFAULT_TARGET_CALORIES = 2000;
+const DEFAULT_TARGET_WATER_ML = 2000;
+const DEFAULT_TARGET_PROTEIN_G = 150;
+const DEFAULT_TARGET_CARBS_G = 250;
+const DEFAULT_TARGET_FATS_G = 70;
 const MIN_MACRO_TOTAL = 1;
+const DEFAULT_FRIEND_VISIBILITY: Record<string, boolean> = {
+  age: true,
+  height: true,
+  weight: true,
+  calorie_target: true,
+  macro_targets: true,
+  water_target: true,
+  diagrams: true,
+};
 
 interface DiagramConfigRow {
   id: string;
@@ -84,6 +97,14 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
   const [editingDiagramId, setEditingDiagramId] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [targetCaloriesInput, setTargetCaloriesInput] = useState(String(DEFAULT_TARGET_CALORIES));
+  const [targetWaterInput, setTargetWaterInput] = useState(String(DEFAULT_TARGET_WATER_ML / 1000));
+  const [targetProteinInput, setTargetProteinInput] = useState(String(DEFAULT_TARGET_PROTEIN_G));
+  const [targetCarbsInput, setTargetCarbsInput] = useState(String(DEFAULT_TARGET_CARBS_G));
+  const [targetFatsInput, setTargetFatsInput] = useState(String(DEFAULT_TARGET_FATS_G));
+  const [ageInput, setAgeInput] = useState('');
+  const [heightInput, setHeightInput] = useState('');
+  const [displayWeightKg, setDisplayWeightKg] = useState<number | null>(null);
+  const [friendVisibility, setFriendVisibility] = useState<Record<string, boolean>>(DEFAULT_FRIEND_VISIBILITY);
 
   const resetDiagramPicker = useCallback(() => {
     setPendingMetrics([]);
@@ -121,15 +142,50 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
       setProfile(newProfile);
       setDraftName(newProfile?.display_name ?? '');
       setTargetCaloriesInput(String(DEFAULT_TARGET_CALORIES));
+      setTargetWaterInput(String(DEFAULT_TARGET_WATER_ML / 1000));
+      setTargetProteinInput(String(DEFAULT_TARGET_PROTEIN_G));
+      setTargetCarbsInput(String(DEFAULT_TARGET_CARBS_G));
+      setTargetFatsInput(String(DEFAULT_TARGET_FATS_G));
+      setAgeInput('');
+      setHeightInput('');
+      setFriendVisibility(DEFAULT_FRIEND_VISIBILITY);
     } else {
       setProfile(profileData);
       setDraftName(profileData.display_name);
-      const profileWithTarget = profileData as Profile & { target_calories?: number | null };
+      const profileWithTarget = profileData as Profile;
       setTargetCaloriesInput(
         profileWithTarget.target_calories && profileWithTarget.target_calories > 0
           ? String(profileWithTarget.target_calories)
           : String(DEFAULT_TARGET_CALORIES)
       );
+      setTargetWaterInput(
+        profileWithTarget.target_water_ml && profileWithTarget.target_water_ml > 0
+          ? String(profileWithTarget.target_water_ml / 1000)
+          : String(DEFAULT_TARGET_WATER_ML / 1000)
+      );
+      setTargetProteinInput(
+        profileWithTarget.target_protein_g && profileWithTarget.target_protein_g > 0
+          ? String(profileWithTarget.target_protein_g)
+          : String(DEFAULT_TARGET_PROTEIN_G)
+      );
+      setTargetCarbsInput(
+        profileWithTarget.target_carbs_g && profileWithTarget.target_carbs_g > 0
+          ? String(profileWithTarget.target_carbs_g)
+          : String(DEFAULT_TARGET_CARBS_G)
+      );
+      setTargetFatsInput(
+        profileWithTarget.target_fats_g && profileWithTarget.target_fats_g > 0
+          ? String(profileWithTarget.target_fats_g)
+          : String(DEFAULT_TARGET_FATS_G)
+      );
+      setAgeInput(profileWithTarget.age ? String(profileWithTarget.age) : '');
+      setHeightInput(profileWithTarget.height_cm ? String(profileWithTarget.height_cm) : '');
+      const nextVisibility = (
+        profileWithTarget.friend_visibility
+        && typeof profileWithTarget.friend_visibility === 'object'
+        && !Array.isArray(profileWithTarget.friend_visibility)
+      ) ? { ...DEFAULT_FRIEND_VISIBILITY, ...profileWithTarget.friend_visibility } : DEFAULT_FRIEND_VISIBILITY;
+      setFriendVisibility(nextVisibility);
     }
 
     let startDate: string;
@@ -146,7 +202,8 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
       endDate = format(new Date(), 'yyyy-MM-dd');
     }
 
-    const [logsRes, weightsRes, waterRes, diagramsRes] = await Promise.all([
+    const todayDate = format(new Date(), 'yyyy-MM-dd');
+    const [logsRes, weightsRes, waterRes, diagramsRes, todayWeightRes, latestWeightRes] = await Promise.all([
       supabase
         .from('food_logs')
         .select('*, food:foods(*)')
@@ -173,6 +230,20 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
         .select('id, metrics, style, metric_units')
         .eq('user_id', user.id)
         .order('created_at'),
+      supabase
+        .from('weight_logs')
+        .select('weight_kg')
+        .eq('user_id', user.id)
+        .eq('date', todayDate)
+        .maybeSingle(),
+      supabase
+        .from('weight_logs')
+        .select('weight_kg')
+        .eq('user_id', user.id)
+        .lte('date', todayDate)
+        .order('date', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
     ]);
 
     const validMetrics = new Set<DiagramMetric>(DIAGRAM_METRICS);
@@ -190,6 +261,9 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
 
     const weights: WeightLog[] = weightsRes.data || [];
     setWeightData(weights.map((w) => ({ date: w.date, weight: w.weight_kg })));
+    const todayWeight = todayWeightRes.data?.weight_kg ?? null;
+    const latestWeight = latestWeightRes.data?.weight_kg ?? null;
+    setDisplayWeightKg(todayWeight ?? latestWeight);
     const waters: WaterLog[] = waterRes.data || [];
     setWaterData(waters.map((w) => ({ date: w.date, water: w.water_ml / 1000 })));
 
@@ -238,6 +312,60 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
     setTargetCaloriesInput(String(nextTarget));
   }
 
+  async function saveMacroAndWaterTargets() {
+    if (!profile) return;
+    const nextWaterLiters = Number(targetWaterInput.trim());
+    const nextProtein = Number(targetProteinInput.trim());
+    const nextCarbs = Number(targetCarbsInput.trim());
+    const nextFats = Number(targetFatsInput.trim());
+    const nextWaterMl = Math.round(nextWaterLiters * 1000);
+    if (
+      !Number.isFinite(nextWaterLiters) || nextWaterLiters <= 0
+      || !Number.isInteger(nextWaterMl) || nextWaterMl <= 0
+      || !Number.isInteger(nextProtein) || nextProtein <= 0
+      || !Number.isInteger(nextCarbs) || nextCarbs <= 0
+      || !Number.isInteger(nextFats) || nextFats <= 0
+    ) return;
+
+    const supabase = createClient();
+    await supabase.from('profiles').update({
+      target_water_ml: nextWaterMl,
+      target_protein_g: nextProtein,
+      target_carbs_g: nextCarbs,
+      target_fats_g: nextFats,
+    }).eq('id', profile.id);
+    setProfile((prev) => prev ? {
+      ...prev,
+      target_water_ml: nextWaterMl,
+      target_protein_g: nextProtein,
+      target_carbs_g: nextCarbs,
+      target_fats_g: nextFats,
+    } : prev);
+  }
+
+  async function saveAgeAndHeight() {
+    if (!profile) return;
+    const age = ageInput.trim() ? Number(ageInput.trim()) : null;
+    const heightCm = heightInput.trim() ? Number(heightInput.trim()) : null;
+    if ((age !== null && (!Number.isInteger(age) || age <= 0)) || (heightCm !== null && (!Number.isInteger(heightCm) || heightCm <= 0))) {
+      return;
+    }
+    const supabase = createClient();
+    await supabase.from('profiles').update({ age, height_cm: heightCm }).eq('id', profile.id);
+    setProfile((prev) => prev ? { ...prev, age, height_cm: heightCm } : prev);
+  }
+
+  async function saveFriendVisibility() {
+    if (!profile) return;
+    const supabase = createClient();
+    await supabase.from('profiles').update({ friend_visibility: friendVisibility }).eq('id', profile.id);
+    setProfile((prev) => prev ? { ...prev, friend_visibility: friendVisibility } : prev);
+  }
+
+  function toggleFriendVisibility(key: string) {
+    setFriendVisibility((prev) => ({ ...prev, [key]: !prev[key] }));
+  }
+
   // When switching to custom range, pre-fill with current preset
   function handleCustomRangeToggle() {
     if (!useCustomRange) {
@@ -248,6 +376,15 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
   }
 
   const today = format(new Date(), 'yyyy-MM-dd');
+  const effectiveRangeDays = useMemo(() => {
+    if (useCustomRange && customStart && customEnd) {
+      const start = parseISO(customStart);
+      const end = parseISO(customEnd);
+      return Math.abs(differenceInCalendarDays(end, start)) + 1;
+    }
+    return range;
+  }, [useCustomRange, customStart, customEnd, range]);
+  const showValueLabels = effectiveRangeDays <= 10;
 
   const diagramData = useMemo<DiagramChartDataPoint[]>(() => {
     const byDate: Record<string, DiagramChartDataPoint> = {};
@@ -293,6 +430,10 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
   const macroGoalTotals = latestMacro
     ? Math.max(latestMacro.protein + latestMacro.carbs + latestMacro.fats, MIN_MACRO_TOTAL)
     : MIN_MACRO_TOTAL;
+  const targetProtein = profile?.target_protein_g ?? DEFAULT_TARGET_PROTEIN_G;
+  const targetCarbs = profile?.target_carbs_g ?? DEFAULT_TARGET_CARBS_G;
+  const targetFats = profile?.target_fats_g ?? DEFAULT_TARGET_FATS_G;
+  const targetWater = (profile?.target_water_ml ?? DEFAULT_TARGET_WATER_ML) / 1000;
   const macroProgressItems = [
     {
       key: 'protein',
@@ -578,10 +719,56 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
                     <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
                       <div className={`h-full ${item.color}`} style={{ width: item.width }} />
                     </div>
-                    <span className="text-xs text-gray-500 w-12 text-right">{item.value}g</span>
+                    <span className="text-xs text-gray-500 w-16 text-right">{item.value}g / {item.key === 'protein' ? targetProtein : item.key === 'carbs' ? targetCarbs : targetFats}g</span>
                   </div>
                 ))}
               </div>
+              <div className="mt-4 pt-3 border-t border-gray-100 flex flex-wrap items-center gap-2">
+                <label htmlFor="target-water" className="text-xs font-medium text-gray-600">Water target (L)</label>
+                <input
+                  id="target-water"
+                  type="number"
+                  min={0.1}
+                  step={0.1}
+                  value={targetWaterInput}
+                  onChange={(e) => setTargetWaterInput(e.target.value)}
+                  className="w-20 px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                />
+                <label htmlFor="target-protein" className="text-xs font-medium text-gray-600">Protein</label>
+                <input
+                  id="target-protein"
+                  type="number"
+                  min={1}
+                  value={targetProteinInput}
+                  onChange={(e) => setTargetProteinInput(e.target.value)}
+                  className="w-16 px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                />
+                <label htmlFor="target-carbs" className="text-xs font-medium text-gray-600">Carbs</label>
+                <input
+                  id="target-carbs"
+                  type="number"
+                  min={1}
+                  value={targetCarbsInput}
+                  onChange={(e) => setTargetCarbsInput(e.target.value)}
+                  className="w-16 px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                />
+                <label htmlFor="target-fats" className="text-xs font-medium text-gray-600">Fats</label>
+                <input
+                  id="target-fats"
+                  type="number"
+                  min={1}
+                  value={targetFatsInput}
+                  onChange={(e) => setTargetFatsInput(e.target.value)}
+                  className="w-16 px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                />
+                <button
+                  onClick={saveMacroAndWaterTargets}
+                  className="px-3 py-1.5 text-xs rounded-lg border border-green-600 bg-green-600 text-white hover:bg-green-700"
+                >
+                  Save all targets
+                </button>
+              </div>
+              <p className="text-xs text-gray-500 mt-2">Water target: {targetWater}L</p>
             </div>
 
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
@@ -593,21 +780,76 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
                 </div>
                 <div className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2">
                   <p className="text-xs text-gray-500">Age</p>
-                  <p className="font-medium text-gray-900">{profile?.age ?? '-'}</p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <input
+                      type="number"
+                      min={1}
+                      value={ageInput}
+                      onChange={(e) => setAgeInput(e.target.value)}
+                      className="w-full px-2 py-1 border border-gray-200 rounded-md text-sm"
+                      placeholder="Age"
+                    />
+                  </div>
                 </div>
                 <div className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2">
                   <p className="text-xs text-gray-500">Height</p>
-                  <p className="font-medium text-gray-900">{profile?.height_cm ? `${profile.height_cm} cm` : '-'}</p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <input
+                      type="number"
+                      min={1}
+                      value={heightInput}
+                      onChange={(e) => setHeightInput(e.target.value)}
+                      className="w-full px-2 py-1 border border-gray-200 rounded-md text-sm"
+                      placeholder="cm"
+                    />
+                  </div>
                 </div>
                 <div className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2">
                   <p className="text-xs text-gray-500">Weight</p>
                   <p className="font-medium text-gray-900">
-                    {weightData.length > 0 ? `${weightData[weightData.length - 1].weight} kg` : '-'}
+                    {displayWeightKg != null ? `${displayWeightKg} kg` : '-'}
                   </p>
                 </div>
                 <div className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2 col-span-2">
                   <p className="text-xs text-gray-500">Email</p>
                   <p className="font-medium text-gray-900 break-all">{email || '-'}</p>
+                </div>
+                <div className="col-span-2 flex justify-end">
+                  <button
+                    onClick={saveAgeAndHeight}
+                    className="px-3 py-1.5 text-xs rounded-lg border border-green-600 bg-green-600 text-white hover:bg-green-700"
+                  >
+                    Save personal data
+                  </button>
+                </div>
+                <div className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-3 col-span-2">
+                  <p className="text-xs text-gray-500 mb-2">Visible to friends</p>
+                  <div className="grid grid-cols-2 gap-2 text-xs text-gray-700">
+                    {Object.entries({
+                      age: 'Age',
+                      height: 'Height',
+                      weight: 'Weight',
+                      calorie_target: 'Calorie target',
+                      macro_targets: 'Macro targets',
+                      water_target: 'Water target',
+                      diagrams: 'Diagrams',
+                    }).map(([key, label]) => (
+                      <label key={key} className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={friendVisibility[key] !== false}
+                          onChange={() => toggleFriendVisibility(key)}
+                        />
+                        <span>{label}</span>
+                      </label>
+                    ))}
+                  </div>
+                  <button
+                    onClick={saveFriendVisibility}
+                    className="mt-2 px-3 py-1.5 text-xs rounded-lg border border-green-600 bg-green-600 text-white hover:bg-green-700"
+                  >
+                    Save visibility
+                  </button>
                 </div>
               </div>
             </div>
@@ -651,6 +893,8 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
                     metrics={diagram.metrics}
                     style={diagram.style}
                     metricUnits={diagram.metricUnits}
+                    macroTargets={{ protein: targetProtein, carbs: targetCarbs, fats: targetFats }}
+                    showValueLabels={showValueLabels}
                   />
                 </div>
               ))}

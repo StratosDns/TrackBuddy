@@ -2,7 +2,7 @@
 
 import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip,
-  CartesianGrid, BarChart, Bar, Legend, AreaChart, Area
+  CartesianGrid, BarChart, Bar, Legend, AreaChart, Area, ReferenceLine, LabelList
 } from 'recharts';
 import { format, parseISO } from 'date-fns';
 
@@ -63,6 +63,12 @@ export interface VisibleMacros {
   fats: boolean;
 }
 
+interface MacroTargets {
+  protein?: number | null;
+  carbs?: number | null;
+  fats?: number | null;
+}
+
 export function getDiagramMetricUnit(metric: DiagramMetric, units?: DiagramMetricUnits) {
   const selected = units?.[metric];
   if (selected && DIAGRAM_METRIC_UNIT_OPTIONS[metric].includes(selected)) return selected;
@@ -111,7 +117,13 @@ function formatDiagramTooltipValue(
   return [`${Math.round(value * VALUE_DECIMALS) / VALUE_DECIMALS} ${unit}`, label];
 }
 
-export function WeightChart({ data }: { data: WeightChartData[] }) {
+export function WeightChart({
+  data,
+  showValueLabels = false,
+}: {
+  data: WeightChartData[];
+  showValueLabels?: boolean;
+}) {
   if (data.length === 0) {
     return (
       <div className="flex items-center justify-center h-40 text-sm text-gray-400">
@@ -141,13 +153,20 @@ export function WeightChart({ data }: { data: WeightChartData[] }) {
           strokeWidth={2}
           dot={{ r: 3, fill: '#3b82f6' }}
           activeDot={{ r: 5 }}
+          label={showValueLabels ? { position: 'top', fontSize: 10, fill: '#6b7280' } : false}
         />
       </LineChart>
     </ResponsiveContainer>
   );
 }
 
-export function CalorieChart({ data }: { data: MacroChartData[] }) {
+export function CalorieChart({
+  data,
+  showValueLabels = false,
+}: {
+  data: MacroChartData[];
+  showValueLabels?: boolean;
+}) {
   if (data.length === 0) {
     return (
       <div className="flex items-center justify-center h-40 text-sm text-gray-400">
@@ -170,7 +189,11 @@ export function CalorieChart({ data }: { data: MacroChartData[] }) {
           labelFormatter={(l) => format(parseISO(l as string), 'MMM d, yyyy')}
           formatter={(v) => [`${v} kcal`, 'Calories']}
         />
-        <Bar dataKey="calories" fill="#f97316" radius={[4, 4, 0, 0]} />
+        <Bar dataKey="calories" fill="#f97316" radius={[4, 4, 0, 0]}>
+          {showValueLabels && (
+            <LabelList dataKey="calories" position="top" fontSize={10} fill="#6b7280" />
+          )}
+        </Bar>
       </BarChart>
     </ResponsiveContainer>
   );
@@ -179,9 +202,13 @@ export function CalorieChart({ data }: { data: MacroChartData[] }) {
 export function MacroChart({
   data,
   visibleMacros = { protein: true, carbs: true, fats: true },
+  targets,
+  showValueLabels = false,
 }: {
   data: MacroChartData[];
   visibleMacros?: VisibleMacros;
+  targets?: MacroTargets;
+  showValueLabels?: boolean;
 }) {
   if (data.length === 0) {
     return (
@@ -215,14 +242,35 @@ export function MacroChart({
           formatter={(v, name) => [`${v}g`, name]}
         />
         <Legend />
+        {visibleMacros.protein && typeof targets?.protein === 'number' && targets.protein > 0 && (
+          <ReferenceLine y={targets.protein} stroke="#3b82f6" strokeDasharray="4 4" label={{ value: 'Protein target', position: 'right', fill: '#3b82f6', fontSize: 10 }} />
+        )}
+        {visibleMacros.carbs && typeof targets?.carbs === 'number' && targets.carbs > 0 && (
+          <ReferenceLine y={targets.carbs} stroke="#eab308" strokeDasharray="4 4" label={{ value: 'Carbs target', position: 'right', fill: '#ca8a04', fontSize: 10 }} />
+        )}
+        {visibleMacros.fats && typeof targets?.fats === 'number' && targets.fats > 0 && (
+          <ReferenceLine y={targets.fats} stroke="#ef4444" strokeDasharray="4 4" label={{ value: 'Fats target', position: 'right', fill: '#dc2626', fontSize: 10 }} />
+        )}
         {visibleMacros.protein && (
-          <Bar dataKey="protein" fill="#3b82f6" name="Protein" radius={[4, 4, 0, 0]} />
+          <Bar dataKey="protein" fill="#3b82f6" name="Protein" radius={[4, 4, 0, 0]}>
+            {showValueLabels && (
+              <LabelList dataKey="protein" position="top" fontSize={10} fill="#6b7280" />
+            )}
+          </Bar>
         )}
         {visibleMacros.carbs && (
-          <Bar dataKey="carbs" fill="#eab308" name="Carbs" radius={[4, 4, 0, 0]} />
+          <Bar dataKey="carbs" fill="#eab308" name="Carbs" radius={[4, 4, 0, 0]}>
+            {showValueLabels && (
+              <LabelList dataKey="carbs" position="top" fontSize={10} fill="#6b7280" />
+            )}
+          </Bar>
         )}
         {visibleMacros.fats && (
-          <Bar dataKey="fats" fill="#ef4444" name="Fats" radius={[4, 4, 0, 0]} />
+          <Bar dataKey="fats" fill="#ef4444" name="Fats" radius={[4, 4, 0, 0]}>
+            {showValueLabels && (
+              <LabelList dataKey="fats" position="top" fontSize={10} fill="#6b7280" />
+            )}
+          </Bar>
         )}
       </BarChart>
     </ResponsiveContainer>
@@ -234,11 +282,15 @@ export function CustomDiagramChart({
   metrics,
   style,
   metricUnits,
+  macroTargets,
+  showValueLabels = false,
 }: {
   data: DiagramChartDataPoint[];
   metrics: DiagramMetric[];
   style: DiagramStyle;
   metricUnits?: DiagramMetricUnits;
+  macroTargets?: MacroTargets;
+  showValueLabels?: boolean;
 }) {
   if (data.length === 0) {
     return (
@@ -286,6 +338,15 @@ export function CustomDiagramChart({
         }}
       />
       <Legend />
+      {metrics.includes('protein') && typeof macroTargets?.protein === 'number' && macroTargets.protein > 0 && (
+        <ReferenceLine y={convertDiagramValue('protein', macroTargets.protein, metricUnits)} stroke={DIAGRAM_METRIC_META.protein.color} strokeDasharray="4 4" label={{ value: 'Protein target', position: 'right', fill: DIAGRAM_METRIC_META.protein.color, fontSize: 10 }} />
+      )}
+      {metrics.includes('carbs') && typeof macroTargets?.carbs === 'number' && macroTargets.carbs > 0 && (
+        <ReferenceLine y={convertDiagramValue('carbs', macroTargets.carbs, metricUnits)} stroke={DIAGRAM_METRIC_META.carbs.color} strokeDasharray="4 4" label={{ value: 'Carbs target', position: 'right', fill: DIAGRAM_METRIC_META.carbs.color, fontSize: 10 }} />
+      )}
+      {metrics.includes('fats') && typeof macroTargets?.fats === 'number' && macroTargets.fats > 0 && (
+        <ReferenceLine y={convertDiagramValue('fats', macroTargets.fats, metricUnits)} stroke={DIAGRAM_METRIC_META.fats.color} strokeDasharray="4 4" label={{ value: 'Fats target', position: 'right', fill: DIAGRAM_METRIC_META.fats.color, fontSize: 10 }} />
+      )}
     </>
   );
 
@@ -304,6 +365,7 @@ export function CustomDiagramChart({
               strokeWidth={2}
               dot={{ r: 2 }}
               connectNulls
+              label={showValueLabels ? { position: 'top', fontSize: 10, fill: '#6b7280' } : false}
             />
           ))}
         </LineChart>
@@ -320,6 +382,7 @@ export function CustomDiagramChart({
               strokeWidth={2}
               dot={{ r: 2 }}
               connectNulls
+              label={showValueLabels ? { position: 'top', fontSize: 10, fill: '#6b7280' } : false}
             />
           ))}
         </LineChart>
@@ -336,7 +399,11 @@ export function CustomDiagramChart({
               fill={DIAGRAM_METRIC_META[metric].color}
               fillOpacity={0.2}
               connectNulls
-            />
+            >
+              {showValueLabels && (
+                <LabelList dataKey={`${metric}__display`} position="top" fontSize={10} fill="#6b7280" />
+              )}
+            </Area>
           ))}
         </AreaChart>
       ) : style === 'stackedBar' ? (
@@ -350,7 +417,11 @@ export function CustomDiagramChart({
               name={`${DIAGRAM_METRIC_META[metric].label} (${getDiagramMetricUnit(metric, metricUnits)})`}
               fill={DIAGRAM_METRIC_META[metric].color}
               radius={[4, 4, 0, 0]}
-            />
+            >
+              {showValueLabels && (
+                <LabelList dataKey={`${metric}__display`} position="top" fontSize={10} fill="#6b7280" />
+              )}
+            </Bar>
           ))}
         </BarChart>
       ) : (
@@ -363,7 +434,11 @@ export function CustomDiagramChart({
               name={`${DIAGRAM_METRIC_META[metric].label} (${getDiagramMetricUnit(metric, metricUnits)})`}
               fill={DIAGRAM_METRIC_META[metric].color}
               radius={[4, 4, 0, 0]}
-            />
+            >
+              {showValueLabels && (
+                <LabelList dataKey={`${metric}__display`} position="top" fontSize={10} fill="#6b7280" />
+              )}
+            </Bar>
           ))}
         </BarChart>
       )}

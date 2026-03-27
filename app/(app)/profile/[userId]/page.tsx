@@ -46,6 +46,19 @@ const DIAGRAM_STYLE_LABELS: Record<DiagramStyle, string> = {
   stackedBar: 'Stacked Bar',
   stepLine: 'Step Line',
 };
+const DEFAULT_TARGET_PROTEIN_G = 150;
+const DEFAULT_TARGET_CARBS_G = 250;
+const DEFAULT_TARGET_FATS_G = 70;
+const DEFAULT_TARGET_WATER_ML = 2000;
+const DEFAULT_FRIEND_VISIBILITY: Record<string, boolean> = {
+  age: true,
+  height: true,
+  weight: true,
+  calorie_target: true,
+  macro_targets: true,
+  water_target: true,
+  diagrams: true,
+};
 
 function parseModeFromCookie(): 'diet' | 'gym' {
   if (typeof document === 'undefined') return 'diet';
@@ -396,6 +409,20 @@ export default function FriendProfilePage({
   const displayName = profile.display_name || profile.username;
   const isFriend = friendshipStatus === 'accepted';
   const isPending = friendshipStatus === 'pending';
+  const friendVisibility = (
+    profile.friend_visibility
+    && typeof profile.friend_visibility === 'object'
+    && !Array.isArray(profile.friend_visibility)
+  ) ? { ...DEFAULT_FRIEND_VISIBILITY, ...profile.friend_visibility } : DEFAULT_FRIEND_VISIBILITY;
+  const canSee = (key: string) => friendVisibility[key] !== false;
+  const showValueLabels = range <= 10;
+  const macroTargets = {
+    protein: profile.target_protein_g ?? DEFAULT_TARGET_PROTEIN_G,
+    carbs: profile.target_carbs_g ?? DEFAULT_TARGET_CARBS_G,
+    fats: profile.target_fats_g ?? DEFAULT_TARGET_FATS_G,
+  };
+  const waterTargetL = (profile.target_water_ml ?? DEFAULT_TARGET_WATER_ML) / 1000;
+  const latestKnownWeight = weightData.length > 0 ? weightData[weightData.length - 1].weight : null;
 
   // Group today's logs by meal
   const mealGroups: Record<MealType, (FoodLog & { food: Food })[]> = {
@@ -527,65 +554,122 @@ export default function FriendProfilePage({
                 </div>
               ) : (
                 <>
-                  <Card title="Weight Progress">
-                    <WeightChart data={weightData} />
+                  <Card title="Shared personal data">
+                    <div className="grid grid-cols-2 gap-3 text-sm">
+                      {canSee('age') && (
+                        <div className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2">
+                          <p className="text-xs text-gray-500">Age</p>
+                          <p className="font-medium text-gray-900">{profile.age ?? '-'}</p>
+                        </div>
+                      )}
+                      {canSee('height') && (
+                        <div className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2">
+                          <p className="text-xs text-gray-500">Height</p>
+                          <p className="font-medium text-gray-900">{profile.height_cm ? `${profile.height_cm} cm` : '-'}</p>
+                        </div>
+                      )}
+                      {canSee('weight') && (
+                        <div className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2">
+                          <p className="text-xs text-gray-500">Latest weight</p>
+                          <p className="font-medium text-gray-900">{latestKnownWeight != null ? `${latestKnownWeight} kg` : '-'}</p>
+                        </div>
+                      )}
+                      {canSee('calorie_target') && (
+                        <div className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2">
+                          <p className="text-xs text-gray-500">Calorie target</p>
+                          <p className="font-medium text-gray-900">{profile.target_calories ?? 2000} kcal</p>
+                        </div>
+                      )}
+                      {canSee('macro_targets') && (
+                        <div className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2 col-span-2">
+                          <p className="text-xs text-gray-500">Macro targets</p>
+                          <p className="font-medium text-gray-900">
+                            Protein {macroTargets.protein}g • Carbs {macroTargets.carbs}g • Fats {macroTargets.fats}g
+                          </p>
+                        </div>
+                      )}
+                      {canSee('water_target') && (
+                        <div className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2 col-span-2">
+                          <p className="text-xs text-gray-500">Water target</p>
+                          <p className="font-medium text-gray-900">{waterTargetL} L</p>
+                        </div>
+                      )}
+                    </div>
                   </Card>
 
+                  {canSee('weight') && (
+                    <Card title="Weight Progress">
+                      <WeightChart data={weightData} showValueLabels={showValueLabels} />
+                    </Card>
+                  )}
+
                   <Card title="Daily Calories">
-                    <CalorieChart data={macroData} />
+                    <CalorieChart data={macroData} showValueLabels={showValueLabels} />
                   </Card>
 
                   <Card title="Daily Macros (Protein / Carbs / Fats)">
-                    <MacroChart data={macroData} />
+                    <MacroChart
+                      data={macroData}
+                      targets={canSee('macro_targets') ? macroTargets : undefined}
+                      showValueLabels={showValueLabels}
+                    />
                   </Card>
 
-                  <Card title="Custom Diagrams">
-                    <div className="flex flex-col gap-4">
-                      {diagramConfigs.map((diagram) => (
-                        <div key={diagram.id} className="border border-gray-100 rounded-2xl p-4 shadow-sm">
-                          <div className="flex items-center justify-between gap-3 mb-3">
-                            <div className="flex flex-wrap gap-2">
-                              {diagram.metrics.map((metric) => (
-                                <span
-                                  key={metric}
-                                  className="px-2.5 py-1 text-xs rounded-full border border-gray-200 text-gray-700 bg-gray-50"
-                                >
-                                  {DIAGRAM_METRIC_META[metric].label}
+                  {canSee('diagrams') && (
+                    <Card title="Custom Diagrams">
+                      <div className="flex flex-col gap-4">
+                        {diagramConfigs.map((diagram) => (
+                          <div key={diagram.id} className="border border-gray-100 rounded-2xl p-4 shadow-sm">
+                            <div className="flex items-center justify-between gap-3 mb-3">
+                              <div className="flex flex-wrap gap-2">
+                                {diagram.metrics.map((metric) => (
+                                  <span
+                                    key={metric}
+                                    className="px-2.5 py-1 text-xs rounded-full border border-gray-200 text-gray-700 bg-gray-50"
+                                  >
+                                    {DIAGRAM_METRIC_META[metric].label}
+                                  </span>
+                                ))}
+                                <span className="px-2.5 py-1 text-xs rounded-full border border-gray-200 text-gray-500 bg-white">
+                                  {DIAGRAM_STYLE_LABELS[diagram.style]}
                                 </span>
-                              ))}
-                              <span className="px-2.5 py-1 text-xs rounded-full border border-gray-200 text-gray-500 bg-white">
-                                {DIAGRAM_STYLE_LABELS[diagram.style]}
-                              </span>
+                              </div>
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  onClick={() => editDiagram(diagram)}
+                                  className="p-1.5 rounded-md text-gray-400 hover:text-green-600 hover:bg-green-50 transition-colors"
+                                  aria-label="Edit diagram"
+                                >
+                                  <Pencil className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => removeDiagram(diagram.id)}
+                                  className="p-1.5 rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                                  aria-label="Remove diagram"
+                                >
+                                  <X className="w-4 h-4" />
+                                </button>
+                              </div>
                             </div>
-                            <div className="flex items-center gap-1.5">
-                              <button
-                                onClick={() => editDiagram(diagram)}
-                                className="p-1.5 rounded-md text-gray-400 hover:text-green-600 hover:bg-green-50 transition-colors"
-                                aria-label="Edit diagram"
-                              >
-                                <Pencil className="w-4 h-4" />
-                              </button>
-                              <button
-                                onClick={() => removeDiagram(diagram.id)}
-                                className="p-1.5 rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
-                                aria-label="Remove diagram"
-                              >
-                                <X className="w-4 h-4" />
-                              </button>
-                            </div>
+                            <CustomDiagramChart
+                              data={diagramData}
+                              metrics={diagram.metrics}
+                              style={diagram.style}
+                              macroTargets={canSee('macro_targets') ? macroTargets : undefined}
+                              showValueLabels={showValueLabels}
+                            />
                           </div>
-                          <CustomDiagramChart data={diagramData} metrics={diagram.metrics} style={diagram.style} />
-                        </div>
-                      ))}
+                        ))}
 
-                      <button
-                        onClick={openNewDiagramPicker}
-                        className="w-full h-24 rounded-2xl border-2 border-dashed border-green-200 bg-green-50/80 hover:bg-green-50 transition-colors flex items-center justify-center text-green-500 shadow-sm"
-                      >
-                        <Plus className="w-7 h-7" />
-                      </button>
-                    </div>
-                  </Card>
+                        <button
+                          onClick={openNewDiagramPicker}
+                          className="w-full h-24 rounded-2xl border-2 border-dashed border-green-200 bg-green-50/80 hover:bg-green-50 transition-colors flex items-center justify-center text-green-500 shadow-sm"
+                        >
+                          <Plus className="w-7 h-7" />
+                        </button>
+                      </div>
+                    </Card>
+                  )}
 
                   {/* Today's food log */}
                   <Card title={`Today's Food Log — ${format(new Date(), 'MMM d, yyyy')}`}>

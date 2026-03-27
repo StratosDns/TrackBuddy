@@ -7,6 +7,11 @@ export interface Profile {
   age?: number | null;
   height_cm?: number | null;
   target_calories?: number | null;
+  target_water_ml?: number | null;
+  target_protein_g?: number | null;
+  target_carbs_g?: number | null;
+  target_fats_g?: number | null;
+  friend_visibility?: Record<string, boolean> | null;
   created_at: string;
 }
 
