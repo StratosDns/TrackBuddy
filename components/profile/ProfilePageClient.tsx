@@ -22,6 +22,7 @@ import GymDashboard from '@/components/profile/GymDashboard';
 import { User, Pencil, Check, X, Plus } from 'lucide-react';
 
 const DEFAULT_RANGE_DAYS = 30;
+const DATA_FETCH_LOOKBACK_DAYS = 36500;
 
 interface ProfilePageClientProps {
   mode: 'diet' | 'gym';
@@ -194,23 +195,27 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
     }
 
     const todayDate = format(new Date(), 'yyyy-MM-dd');
+    const fetchStartDate = format(subDays(new Date(), DATA_FETCH_LOOKBACK_DAYS - 1), 'yyyy-MM-dd');
     const [logsRes, weightsRes, waterRes, diagramsRes, todayWeightRes, latestWeightRes] = await Promise.all([
       supabase
         .from('food_logs')
         .select('*, food:foods(*)')
         .eq('user_id', user.id)
+        .gte('date', fetchStartDate)
         .lte('date', todayDate)
         .order('date'),
       supabase
         .from('weight_logs')
         .select('*')
         .eq('user_id', user.id)
+        .gte('date', fetchStartDate)
         .lte('date', todayDate)
         .order('date'),
       supabase
         .from('water_logs')
         .select('*')
         .eq('user_id', user.id)
+        .gte('date', fetchStartDate)
         .lte('date', todayDate)
         .order('date'),
       supabase

@@ -27,6 +27,7 @@ import { MODE_COOKIE, normalizeMode } from '@/lib/mode';
 import { normalizeFriendVisibility } from '@/lib/profileVisibility';
 
 const DEFAULT_RANGE_DAYS = 30;
+const DATA_FETCH_LOOKBACK_DAYS = 36500;
 
 interface DiagramConfig {
   id: string;
@@ -216,18 +217,21 @@ export default function FriendProfilePage({
     setDataLoading(true);
     const supabase = createClient();
     const endDate = format(new Date(), 'yyyy-MM-dd');
+    const fetchStartDate = format(subDays(new Date(), DATA_FETCH_LOOKBACK_DAYS - 1), 'yyyy-MM-dd');
 
     const [logsRes, weightsRes, selectedDateRes, waterRes, diagramsRes] = await Promise.all([
       supabase
         .from('food_logs')
         .select('*, food:foods(*)')
         .eq('user_id', userId)
+        .gte('date', fetchStartDate)
         .lte('date', endDate)
         .order('date'),
       supabase
         .from('weight_logs')
         .select('*')
         .eq('user_id', userId)
+        .gte('date', fetchStartDate)
         .lte('date', endDate)
         .order('date'),
       supabase
@@ -240,6 +244,7 @@ export default function FriendProfilePage({
         .from('water_logs')
         .select('*')
         .eq('user_id', userId)
+        .gte('date', fetchStartDate)
         .lte('date', endDate)
         .order('date'),
       supabase

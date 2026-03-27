@@ -93,8 +93,8 @@ function timelineFormatter(metric: TimelineMetric, value: number): string {
 }
 
 export default function GymDashboard({ targetUserId }: { targetUserId?: string }) {
-  const today = format(new Date(), 'yyyy-MM-dd');
-  const recommendedStart = format(subDays(new Date(), 29), 'yyyy-MM-dd');
+  const today = useMemo(() => format(new Date(), 'yyyy-MM-dd'), []);
+  const recommendedStart = useMemo(() => format(subDays(new Date(), 29), 'yyyy-MM-dd'), []);
   const storageKey = `${GYM_DIAGRAM_STORAGE_PREFIX}${targetUserId || 'self'}`;
   const [workoutLogs, setWorkoutLogs] = useState<WorkoutLog[]>([]);
   const [loading, setLoading] = useState(true);
@@ -133,6 +133,13 @@ export default function GymDashboard({ targetUserId }: { targetUserId?: string }
   const [pendingStyle, setPendingStyle] = useState<ChartType>(DEFAULT_CHART_TYPE);
   const [pendingAxisMin, setPendingAxisMin] = useState('');
   const [pendingAxisMax, setPendingAxisMax] = useState('');
+  const selectedDayLabel = useMemo(() => {
+    try {
+      return format(parseISO(selectedDay), 'MMM d, yyyy');
+    } catch {
+      return selectedDay;
+    }
+  }, [selectedDay]);
 
   useEffect(() => {
     async function loadGymData() {
@@ -354,15 +361,15 @@ export default function GymDashboard({ targetUserId }: { targetUserId?: string }
       <div className="flex flex-col gap-4">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div className={SUMMARY_CARD_CLASS}>
-            <p className="text-xs text-red-700 font-medium">Sets ({selectedDay})</p>
+            <p className="text-xs text-red-700 font-medium">Sets ({selectedDayLabel})</p>
             <p className="text-2xl font-bold text-red-600">{totalSetsForDay}</p>
           </div>
           <div className={SUMMARY_CARD_CLASS}>
-            <p className="text-xs text-red-700 font-medium">Reps ({selectedDay})</p>
+            <p className="text-xs text-red-700 font-medium">Reps ({selectedDayLabel})</p>
             <p className="text-2xl font-bold text-red-600">{totalRepsForDay}</p>
           </div>
           <div className={SUMMARY_CARD_CLASS}>
-            <p className="text-xs text-red-700 font-medium">Volume ({selectedDay})</p>
+            <p className="text-xs text-red-700 font-medium">Volume ({selectedDayLabel})</p>
             <p className="text-2xl font-bold text-red-600">{Math.round(totalVolumeForDay)} kg</p>
           </div>
         </div>
