@@ -314,26 +314,31 @@ function MealSection({ meal, logs, macros, foods, date, onDelete, onUpdate, onAd
   useEffect(() => {
     if (foodSearchTab !== 'explore') return;
     let cancelled = false;
-    const supabase = createClient();
-    const run = async () => {
-      setExploreLoading(true);
-      let q = supabase
-        .from('foods')
-        .select('*')
-        .eq('is_public', true)
-        .order('name')
-        .limit(50);
-      if (exploreSearch.trim()) {
-        q = q.ilike('name', `%${exploreSearch.trim()}%`);
-      }
-      const { data } = await q;
-      if (!cancelled) {
-        setExploreFoods(data || []);
-        setExploreLoading(false);
-      }
+    const timeoutId = setTimeout(() => {
+      const supabase = createClient();
+      const run = async () => {
+        setExploreLoading(true);
+        let q = supabase
+          .from('foods')
+          .select('*')
+          .eq('is_public', true)
+          .order('name')
+          .limit(50);
+        if (exploreSearch.trim()) {
+          q = q.ilike('name', `%${exploreSearch.trim()}%`);
+        }
+        const { data } = await q;
+        if (!cancelled) {
+          setExploreFoods(data || []);
+          setExploreLoading(false);
+        }
+      };
+      run();
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(timeoutId);
     };
-    run();
-    return () => { cancelled = true; };
   }, [foodSearchTab, exploreSearch]);
 
   async function addEntry() {

@@ -22,7 +22,7 @@ import GymDashboard from '@/components/profile/GymDashboard';
 import { User, Pencil, Check, X, Plus } from 'lucide-react';
 
 const DEFAULT_RANGE_DAYS = 30;
-const DATA_FETCH_LOOKBACK_DAYS = 36500;
+const DATA_FETCH_LOOKBACK_DAYS = 365;
 
 interface ProfilePageClientProps {
   mode: 'diet' | 'gym';
