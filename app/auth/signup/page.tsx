@@ -124,7 +124,14 @@ export default function SignupPage() {
           <Button type="submit" loading={isSubmitting} size="lg" className="mt-2">
             Create Account
           </Button>
-          <Button type="button" variant="secondary" size="lg" className="w-full" onClick={onGoogleSignIn}>
+          <Button
+            type="button"
+            variant="secondary"
+            size="lg"
+            className="w-full"
+            onClick={onGoogleSignIn}
+            aria-label="Sign in with Google"
+          >
             Continue with Google
           </Button>
         </form>
