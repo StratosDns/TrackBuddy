@@ -449,9 +449,6 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
   const circleCircumference = 2 * Math.PI * circleRadius;
   const circleDashOffset = circleCircumference * (1 - calorieProgress);
 
-  const macroGoalTotals = selectedMacro
-    ? Math.max(selectedMacro.protein + selectedMacro.carbs + selectedMacro.fats, MIN_MACRO_TOTAL)
-    : MIN_MACRO_TOTAL;
   const targetProtein = profile?.target_protein_g ?? DEFAULT_TARGET_PROTEIN_G;
   const targetCarbs = profile?.target_carbs_g ?? DEFAULT_TARGET_CARBS_G;
   const targetFats = profile?.target_fats_g ?? DEFAULT_TARGET_FATS_G;
@@ -466,21 +463,21 @@ export default function ProfilePageClient({ mode }: ProfilePageClientProps) {
       key: 'protein',
       label: 'Protein',
       value: selectedMacro?.protein ?? 0,
-      width: `${Math.min(((selectedMacro?.protein ?? 0) / macroGoalTotals) * 100, 100)}%`,
+      width: `${Math.min(((selectedMacro?.protein ?? 0) / Math.max(targetProtein, MIN_MACRO_TOTAL)) * 100, 100)}%`,
       color: 'bg-violet-500',
     },
     {
       key: 'carbs',
       label: 'Carbs',
       value: selectedMacro?.carbs ?? 0,
-      width: `${Math.min(((selectedMacro?.carbs ?? 0) / macroGoalTotals) * 100, 100)}%`,
+      width: `${Math.min(((selectedMacro?.carbs ?? 0) / Math.max(targetCarbs, MIN_MACRO_TOTAL)) * 100, 100)}%`,
       color: 'bg-amber-500',
     },
     {
       key: 'fats',
       label: 'Fats',
       value: selectedMacro?.fats ?? 0,
-      width: `${Math.min(((selectedMacro?.fats ?? 0) / macroGoalTotals) * 100, 100)}%`,
+      width: `${Math.min(((selectedMacro?.fats ?? 0) / Math.max(targetFats, MIN_MACRO_TOTAL)) * 100, 100)}%`,
       color: 'bg-rose-500',
     },
   ];
