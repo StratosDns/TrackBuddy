@@ -5,7 +5,6 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
@@ -25,7 +24,6 @@ const schema = z
 type FormData = z.infer<typeof schema>;
 
 export default function SignupPage() {
-  const router = useRouter();
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const {
@@ -48,6 +46,21 @@ export default function SignupPage() {
       setError(authError.message);
     } else {
       setSuccess(true);
+    }
+  }
+
+  async function onGoogleSignIn() {
+    setError('');
+    const supabase = createClient();
+    const { error: oauthError } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback`,
+      },
+    });
+
+    if (oauthError) {
+      setError(oauthError.message);
     }
   }
 
@@ -110,6 +123,9 @@ export default function SignupPage() {
           )}
           <Button type="submit" loading={isSubmitting} size="lg" className="mt-2">
             Create Account
+          </Button>
+          <Button type="button" variant="secondary" size="lg" className="w-full" onClick={onGoogleSignIn}>
+            Continue with Google
           </Button>
         </form>
 
