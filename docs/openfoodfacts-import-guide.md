@@ -15,7 +15,7 @@ You will add a new global table (`food_catalog`) that stores curated public food
 
 - Your existing `foods` table stays for user-created foods.
 - New `food_catalog` table will hold imported foods everyone can search.
-- A GitHub Action will run on schedule (for example every night), pull data from Open Food Facts, transform/filter it, and upsert into Supabase.
+- A GitHub Action will run on schedule (for example, every night), pull data from Open Food Facts, transform/filter it, and upsert into Supabase.
 
 This keeps your app fast, cheap, and easy to control.
 
@@ -120,7 +120,7 @@ Recommended mapping:
 | `quantity` | `quantity` | Optional |
 | `serving_size` | `serving_size` | Optional |
 | `image_front_url` | `image_url` | Optional |
-| `nutriments.energy-kcal_100g` | `calories_per_100g` | fallback to 0 |
+| `nutriments['energy-kcal_100g']` | `calories_per_100g` | fallback to 0 (use bracket notation) |
 | `nutriments.proteins_100g` | `protein_per_100g` | fallback to 0 |
 | `nutriments.carbohydrates_100g` | `carbs_per_100g` | fallback to 0 |
 | `nutriments.fat_100g` | `fats_per_100g` | fallback to 0 |
@@ -185,7 +185,7 @@ function toRow(product) {
   const fats = num(nutriments.fat_100g) ?? 0;
   const fiber = num(nutriments.fiber_100g);
   const sodiumG = num(nutriments.sodium_100g);
-  const sodiumMg = sodiumG == null ? null : sodiumG * 1000;
+  const sodiumMg = sodiumG === null ? null : sodiumG * 1000;
 
   const hasName = typeof product.product_name === 'string' && product.product_name.trim().length > 0;
   const hasAnyMacro = kcal > 0 || protein > 0 || carbs > 0 || fats > 0;
@@ -230,7 +230,9 @@ async function main() {
 
   console.log('Downloading dump...');
   const response = await fetch(OPENFOODFACTS_DUMP_URL);
-  if (!response.ok || !response.body) throw new Error(`Download failed: ${response.status}`);
+  if (!response.ok || !response.body) {
+    throw new Error(`Download failed: ${response.status} ${response.statusText}`);
+  }
 
   await pipeline(response.body, createWriteStream(gzPath));
   console.log('Download complete.');
