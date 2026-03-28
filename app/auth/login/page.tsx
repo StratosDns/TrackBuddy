@@ -42,6 +42,21 @@ export default function LoginPage() {
     }
   }
 
+  async function onGoogleSignIn() {
+    setError('');
+    const supabase = createClient();
+    const { error: oauthError } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback`,
+      },
+    });
+
+    if (oauthError) {
+      setError(oauthError.message);
+    }
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-50 to-emerald-100 px-4">
       <div className="bg-white rounded-2xl shadow-lg p-8 w-full max-w-md">
@@ -75,6 +90,16 @@ export default function LoginPage() {
           )}
           <Button type="submit" loading={isSubmitting} size="lg" className="mt-2">
             Sign In
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            size="lg"
+            className="w-full"
+            onClick={onGoogleSignIn}
+            aria-label="Sign in with Google"
+          >
+            Continue with Google
           </Button>
         </form>
 
